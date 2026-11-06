@@ -294,6 +294,12 @@
                     android:summary="@string/millisecondsEnabledSummary"
                     android:title="@string/millisecondsEnabledTitle" />
 
+
+                   <Preference
+                    android:key="pref_import_font"
+                    android:title="Import Font"
+                    android:summary="Load a custom TTF font file for the timer" />
+
             </PreferenceCategory>
 
             <Preference android:layout="@layout/divider_preference_category" />
