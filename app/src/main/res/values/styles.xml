@@ -10,7 +10,7 @@
     required.
     -->
 
-    <style name="BaseDefaultTheme" parent="Theme.Material3.Light.NoActionBar">
+    <style name="BaseDefaultTheme" parent="Theme.Material3Expressive.Light.NoActionBar">
         <item name="windowActionModeOverlay">true</item>
         <item name="android:actionModeStyle">@style/ActionModeStyle</item>
 
@@ -156,7 +156,7 @@
         <item name="cornerSize">32dp</item>
     </style>
 
-    <style name="SettingsTheme" parent="Theme.Material3.Light.NoActionBar">
+    <style name="SettingsTheme" parent="Theme.Material3Expressive.Light.NoActionBar">
         <item name="colorPrimary">@color/md_white_1000</item>
         <item name="colorPrimaryDark">@color/md_white_1000</item>
         <item name="colorSurface">@color/md_white_1000</item>
