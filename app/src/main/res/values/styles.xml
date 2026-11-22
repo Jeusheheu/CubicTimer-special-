@@ -10,7 +10,7 @@
     required.
     -->
 
-    <style name="BaseDefaultTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="BaseDefaultTheme" parent="Theme.Material3.Light.NoActionBar">
         <item name="windowActionModeOverlay">true</item>
         <item name="android:actionModeStyle">@style/ActionModeStyle</item>
 
@@ -65,6 +65,12 @@
         <item name="colorTabIconFaded">@color/tabFadedDark</item>
 
         <item name="colorAccent">@color/md_amber_A200</item>
+        <item name="colorSecondary">?colorAccent</item>
+        <item name="colorOnPrimary">?colorTimerText</item>
+        <item name="colorOnSecondary">?colorTextContrastAccent</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.CubicTimer.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.CubicTimer.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.CubicTimer.Large</item>
 
         <item name="colorPrimaryDark">?colorMainGradientStart</item>
         <item name="colorPrimary">?colorMainGradientStart</item>
@@ -130,13 +136,40 @@
         <item name="colorPrimaryDark">#0062ff</item>
     </style>
 
-    <style name="SettingsTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <style name="ShapeAppearance.CubicTimer.Small">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <style name="ShapeAppearance.CubicTimer.Medium">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
+    </style>
+
+    <style name="ShapeAppearance.CubicTimer.Large">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">32dp</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay.CubicTimer.Expressive">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">32dp</item>
+    </style>
+
+    <style name="SettingsTheme" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/md_white_1000</item>
         <item name="colorPrimaryDark">@color/md_white_1000</item>
         <item name="colorSurface">@color/md_white_1000</item>
         <item name="colorOnSurface">@color/black_text</item>
         <item name="android:colorBackground">#F7F6FA</item>
         <item name="colorAccent">@color/md_blue_A700</item>
+        <item name="colorSecondary">@color/md_blue_A700</item>
+        <item name="colorOnPrimary">@color/black_text</item>
+        <item name="colorOnSecondary">@color/md_white_1000</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.CubicTimer.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.CubicTimer.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.CubicTimer.Large</item>
+        <item name="defaultFontFamily">@font/quicksand_medium</item>
         <item name="android:fontFamily">?defaultFontFamily</item>
         <item name="colorItemListBackgroundSelected">@color/md_indigo_200</item>
         <item name="md_positive_color">@color/md_blue_A700</item>

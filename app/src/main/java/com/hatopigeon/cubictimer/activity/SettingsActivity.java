@@ -31,6 +31,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.animation.OvershootInterpolator;
 import android.webkit.MimeTypeMap;
 import android.widget.EditText;
 import android.widget.ArrayAdapter;
@@ -414,6 +415,17 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
             super.onViewCreated(view, savedInstanceState);
+
+            if (savedInstanceState == null) {
+                view.setAlpha(0f);
+                view.setTranslationY(ThemeUtils.dpToPix(requireContext(), 12));
+                view.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(360L)
+                        .setInterpolator(new OvershootInterpolator(0.35f))
+                        .start();
+            }
 
             // Return to the previous page on back press
             requireActivity().getOnBackPressedDispatcher()

@@ -309,7 +309,7 @@
 
             <PreferenceCategory android:title="@string/timer_appearance_category">
 
-                <Preference
+                <com.hatopigeon.cubictimer.preference.ImportFontPreference
                     android:key="@string/pk_timer_font_import"
                     android:summary="@string/timer_font_import_summary"
                     android:title="@string/timer_font_import_title" />
