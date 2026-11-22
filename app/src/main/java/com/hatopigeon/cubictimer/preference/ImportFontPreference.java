@@ -15,9 +15,19 @@ import com.hatopigeon.cubicify.R;
 import com.google.android.material.button.MaterialButton;
 
 public class ImportFontPreference extends Preference {
+    public interface OnImportFontClickListener {
+        void onImportFontClick();
+    }
+
+    private OnImportFontClickListener importFontClickListener;
+
     public ImportFontPreference(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         setLayoutResource(R.layout.preference_import_font);
+    }
+
+    public void setOnImportFontClickListener(@Nullable OnImportFontClickListener listener) {
+        importFontClickListener = listener;
     }
 
     @Override
@@ -25,7 +35,13 @@ public class ImportFontPreference extends Preference {
         super.onBindViewHolder(holder);
         View importButton = holder.findViewById(R.id.import_font_button);
         if (importButton instanceof MaterialButton) {
-            importButton.setOnClickListener(view -> onClick());
+            importButton.setOnClickListener(view -> {
+                if (importFontClickListener != null) {
+                    importFontClickListener.onImportFontClick();
+                } else {
+                    onClick();
+                }
+            });
             importButton.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                     view.animate().scaleX(0.97f).scaleY(0.97f)

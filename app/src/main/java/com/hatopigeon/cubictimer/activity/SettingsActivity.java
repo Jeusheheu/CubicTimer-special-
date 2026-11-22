@@ -1,6 +1,7 @@
 package com.hatopigeon.cubictimer.activity;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
@@ -22,6 +23,7 @@ import androidx.core.view.WindowCompat;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.preference.Preference;
+import androidx.preference.ListPreference;
 import androidx.preference.PreferenceScreen;
 import androidx.appcompat.widget.AppCompatSeekBar;
 
@@ -47,6 +49,7 @@ import com.afollestad.materialdialogs.MaterialDialog;
 import com.hatopigeon.cubicify.R;
 import com.hatopigeon.cubictimer.fragment.dialog.CrossHintFaceSelectDialog;
 import com.hatopigeon.cubictimer.fragment.dialog.LocaleSelectDialog;
+import com.hatopigeon.cubictimer.preference.ImportFontPreference;
 import com.hatopigeon.cubictimer.utils.InsetsUtils;
 import com.hatopigeon.cubictimer.utils.LocaleUtils;
 import com.hatopigeon.cubictimer.utils.Prefs;
@@ -409,6 +412,16 @@ public class SettingsActivity extends AppCompatActivity {
                 }
             }
 
+            Preference fontImportPreference = findPreference(getString(R.string.pk_timer_font_import));
+            if (fontImportPreference instanceof ImportFontPreference) {
+                ((ImportFontPreference) fontImportPreference)
+                        .setOnImportFontClickListener(this::launchFontPicker);
+            } else if (fontImportPreference != null) {
+                Log.e(TAG, "Font import preference has an unexpected type: "
+                        + fontImportPreference.getClass().getName());
+            }
+
+            updateTimerFontPreferenceEntries();
             mainScreen = getPreferenceScreen();
         }
 
@@ -746,7 +759,13 @@ public class SettingsActivity extends AppCompatActivity {
                             "application/x-font-opentype", "application/vnd.ms-opentype",
                             "application/octet-stream"});
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            importFontLauncher.launch(intent);
+            try {
+                importFontLauncher.launch(intent);
+            } catch (ActivityNotFoundException e) {
+                Log.e(TAG, "No document picker is available for importing fonts", e);
+                Toast.makeText(requireContext(), R.string.timer_font_import_failed,
+                        Toast.LENGTH_LONG).show();
+            }
         }
 
         private void importCustomFont(@NonNull Uri uri) {
@@ -771,17 +790,20 @@ public class SettingsActivity extends AppCompatActivity {
             String fileName = UUID.randomUUID().toString() + extension;
             File temporaryFile = new File(fontDirectory, fileName + ".tmp");
             File fontFile = new File(fontDirectory, fileName);
-            try (InputStream input = requireContext().getContentResolver().openInputStream(uri);
-                 OutputStream output = new java.io.FileOutputStream(temporaryFile)) {
-                if (input == null) {
-                    throw new IOException("No data available for selected font");
+            try {
+                try (InputStream input = requireContext().getContentResolver().openInputStream(uri)) {
+                    if (input == null) {
+                        throw new IOException("No data available for selected font");
+                    }
+                    try (OutputStream output = new java.io.FileOutputStream(temporaryFile)) {
+                        byte[] buffer = new byte[32 * 1024];
+                        int count;
+                        while ((count = input.read(buffer)) != -1) {
+                            output.write(buffer, 0, count);
+                        }
+                        output.flush();
+                    }
                 }
-                byte[] buffer = new byte[32 * 1024];
-                int count;
-                while ((count = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, count);
-                }
-                output.flush();
                 Typeface.createFromFile(temporaryFile.getAbsolutePath());
                 if (!temporaryFile.renameTo(fontFile)) {
                     throw new IOException("Could not save imported font");
@@ -789,6 +811,7 @@ public class SettingsActivity extends AppCompatActivity {
                 Prefs.getPrefs().edit()
                         .putString(TimerFontUtils.getDisplayNamePreferenceKey(fileName), displayName)
                         .apply();
+                updateTimerFontPreferenceEntries();
                 Toast.makeText(requireContext(), R.string.timer_font_import_success,
                         Toast.LENGTH_SHORT).show();
             } catch (IOException | RuntimeException e) {
@@ -796,6 +819,12 @@ public class SettingsActivity extends AppCompatActivity {
                 if (temporaryFile.exists() && !temporaryFile.delete()) {
                     Log.w(TAG, "Could not remove invalid temporary font file " + temporaryFile);
                 }
+                if (fontFile.exists() && !fontFile.delete()) {
+                    Log.w(TAG, "Could not remove unregistered font file " + fontFile);
+                }
+                Prefs.getPrefs().edit()
+                        .remove(TimerFontUtils.getDisplayNamePreferenceKey(fileName))
+                        .apply();
                 Toast.makeText(requireContext(), R.string.timer_font_import_failed,
                         Toast.LENGTH_LONG).show();
             }
@@ -832,18 +861,10 @@ public class SettingsActivity extends AppCompatActivity {
             addFontChoice(fontValues, fontLabels, "sans_serif", R.string.timer_font_sans_serif);
             addFontChoice(fontValues, fontLabels, "monospace", R.string.timer_font_monospace);
 
-            File fontDirectory = TimerFontUtils.getCustomFontDirectory(context);
-            File[] importedFonts = fontDirectory.listFiles((directory, name) ->
-                    name.toLowerCase(Locale.ROOT).endsWith(".ttf")
-                            || name.toLowerCase(Locale.ROOT).endsWith(".otf"));
-            if (importedFonts != null) {
-                java.util.Arrays.sort(importedFonts, (left, right) ->
-                        left.getName().compareToIgnoreCase(right.getName()));
-                for (File font : importedFonts) {
-                    fontValues.add(TimerFontUtils.getCustomFontId(font.getName()));
-                    fontLabels.add(Prefs.getPrefs().getString(
-                            TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
-                }
+            for (File font : getImportedFonts(context)) {
+                fontValues.add(TimerFontUtils.getCustomFontId(font.getName()));
+                fontLabels.add(Prefs.getPrefs().getString(
+                        TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
             }
 
             LinearLayout panel = new LinearLayout(context);
@@ -944,6 +965,51 @@ public class SettingsActivity extends AppCompatActivity {
         private void addFontChoice(List<String> values, List<String> labels, String value, int labelRes) {
             values.add(value);
             labels.add(getString(labelRes));
+        }
+
+        private void updateTimerFontPreferenceEntries() {
+            Preference preference = findPreference(getString(R.string.pk_timer_font));
+            if (!(preference instanceof ListPreference)) {
+                if (preference != null) {
+                    Log.e(TAG, "Timer font preference has an unexpected type: "
+                            + preference.getClass().getName());
+                }
+                return;
+            }
+
+            List<CharSequence> entries = new ArrayList<>();
+            List<CharSequence> entryValues = new ArrayList<>();
+            CharSequence[] builtInEntries = getResources().getTextArray(R.array.timer_font_entries);
+            CharSequence[] builtInValues = getResources().getTextArray(R.array.timer_font_values);
+            if (builtInEntries.length != builtInValues.length) {
+                Log.e(TAG, "Built-in timer font entries and values have different lengths");
+                return;
+            }
+            for (int i = 0; i < builtInEntries.length; i++) {
+                entries.add(builtInEntries[i]);
+                entryValues.add(builtInValues[i]);
+            }
+            for (File font : getImportedFonts(requireContext())) {
+                entries.add(Prefs.getPrefs().getString(
+                        TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
+                entryValues.add(TimerFontUtils.getCustomFontId(font.getName()));
+            }
+            ((ListPreference) preference).setEntries(entries.toArray(new CharSequence[0]));
+            ((ListPreference) preference).setEntryValues(entryValues.toArray(new CharSequence[0]));
+        }
+
+        @NonNull
+        private File[] getImportedFonts(@NonNull Context context) {
+            File fontDirectory = TimerFontUtils.getCustomFontDirectory(context);
+            File[] fonts = fontDirectory.listFiles((directory, name) ->
+                    name.toLowerCase(Locale.ROOT).endsWith(".ttf")
+                            || name.toLowerCase(Locale.ROOT).endsWith(".otf"));
+            if (fonts == null) {
+                return new File[0];
+            }
+            java.util.Arrays.sort(fonts, (left, right) ->
+                    left.getName().compareToIgnoreCase(right.getName()));
+            return fonts;
         }
 
         private void createImagePickerDialog(boolean isPortrait) {
