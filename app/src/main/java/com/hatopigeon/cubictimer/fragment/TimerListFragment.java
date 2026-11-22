@@ -49,6 +49,7 @@ import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.TTIntent;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -165,6 +166,7 @@ public class TimerListFragment extends BaseFragment
                     // Main popup
                     PopupMenu popupMenu = new PopupMenu(getActivity(), moreButton);
                     popupMenu.getMenuInflater().inflate(R.menu.menu_list_more, popupMenu.getMenu());
+                    UiFontUtils.applyToMenu(popupMenu.getMenu(), requireContext());
 
                     popupMenu.setOnMenuItemClickListener(item -> {
                         switch (item.getItemId()) {

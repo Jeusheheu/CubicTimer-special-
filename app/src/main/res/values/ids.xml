@@ -2,5 +2,7 @@
 <resources>
 
     <!-- Pre-defined IDs allowing forward ID references for RelativeLayout of statistics table. -->
+    <item type="id" name="ui_font_original_typeface" />
+    <item type="id" name="ui_font_recycler_listener" />
 
 </resources>

@@ -104,6 +104,7 @@ THESE KEYS MUST NOT BE LOCALIZED!
     <string translatable="false" name="pk_timer_text_size">timerTextSize</string>
     <string translatable="false" name="pk_timer_text_offset">timerTextOffset</string>
     <string translatable="false" name="pk_timer_font">timerFont</string>
+    <string translatable="false" name="pk_app_ui_font">appUiFont</string>
     <string translatable="false" name="pk_timer_font_import">timerFontImport</string>
     <string translatable="false" name="pk_appearance_timer">timerAppearanceTimer</string>
     <string translatable="false" name="pk_appearance_scramble">timerAppearanceScramble</string>

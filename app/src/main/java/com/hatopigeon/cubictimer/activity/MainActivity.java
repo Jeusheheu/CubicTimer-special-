@@ -49,6 +49,7 @@ import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.StoreUtils;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.mikepenz.materialdrawer.Drawer;
 import com.mikepenz.materialdrawer.DrawerBuilder;
 import com.mikepenz.materialdrawer.model.DividerDrawerItem;
@@ -543,6 +544,12 @@ public class MainActivity extends AppCompatActivity
         mDrawerToggle = new SmoothActionBarDrawerToggle(
                 this, mDrawerLayout, null, R.string.drawer_open, R.string.drawer_close);
         mDrawerLayout.setDrawerListener(mDrawerToggle);
+        mDrawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerOpened(@NonNull View drawerView) {
+                UiFontUtils.applyToViewTree(drawerView);
+            }
+        });
 
         // pass through insets to the TimerFragmentMain
         mDrawerLayout.setFitsSystemWindows(false);
@@ -649,6 +656,7 @@ public class MainActivity extends AppCompatActivity
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.menu_overview, menu);
+        UiFontUtils.applyToMenu(menu, this);
 
         return super.onCreateOptionsMenu(menu);
     }

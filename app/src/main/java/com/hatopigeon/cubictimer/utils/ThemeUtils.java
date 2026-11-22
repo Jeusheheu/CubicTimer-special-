@@ -413,6 +413,7 @@ public final class ThemeUtils {
      */
     public static MaterialDialog roundDialog(Context context, MaterialDialog dialog) {
         dialog.getWindow().setBackgroundDrawable(ContextCompat.getDrawable(context, R.drawable.outline_background_card_smoother));
+        UiFontUtils.applyWhenDialogShown(context, dialog);
         return dialog;
     }
 

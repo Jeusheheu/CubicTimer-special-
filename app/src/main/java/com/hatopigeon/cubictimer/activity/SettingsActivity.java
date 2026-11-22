@@ -55,6 +55,7 @@ import com.hatopigeon.cubictimer.utils.LocaleUtils;
 import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
 import com.hatopigeon.cubictimer.utils.TimerFontUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.takisoft.preferencex.PreferenceFragmentCompat;
 
 import java.io.File;
@@ -422,6 +423,19 @@ public class SettingsActivity extends AppCompatActivity {
             }
 
             updateTimerFontPreferenceEntries();
+            updateUiFontPreferenceEntries();
+            Preference uiFontPreference = findPreference(getString(R.string.pk_app_ui_font));
+            if (uiFontPreference != null) {
+                uiFontPreference.setOnPreferenceChangeListener((preference, newValue) -> {
+                    if (!(newValue instanceof String)) {
+                        Log.e(TAG, "App UI font preference received a non-string value");
+                        return false;
+                    }
+                    UiFontUtils.applyToViewTree(requireActivity().getWindow().getDecorView(),
+                            UiFontUtils.getTypeface(requireContext(), (String) newValue));
+                    return true;
+                });
+            }
             mainScreen = getPreferenceScreen();
         }
 
@@ -812,6 +826,7 @@ public class SettingsActivity extends AppCompatActivity {
                         .putString(TimerFontUtils.getDisplayNamePreferenceKey(fileName), displayName)
                         .apply();
                 updateTimerFontPreferenceEntries();
+                updateUiFontPreferenceEntries();
                 Toast.makeText(requireContext(), R.string.timer_font_import_success,
                         Toast.LENGTH_SHORT).show();
             } catch (IOException | RuntimeException e) {
@@ -983,6 +998,37 @@ public class SettingsActivity extends AppCompatActivity {
             CharSequence[] builtInValues = getResources().getTextArray(R.array.timer_font_values);
             if (builtInEntries.length != builtInValues.length) {
                 Log.e(TAG, "Built-in timer font entries and values have different lengths");
+                return;
+            }
+            for (int i = 0; i < builtInEntries.length; i++) {
+                entries.add(builtInEntries[i]);
+                entryValues.add(builtInValues[i]);
+            }
+            for (File font : getImportedFonts(requireContext())) {
+                entries.add(Prefs.getPrefs().getString(
+                        TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
+                entryValues.add(TimerFontUtils.getCustomFontId(font.getName()));
+            }
+            ((ListPreference) preference).setEntries(entries.toArray(new CharSequence[0]));
+            ((ListPreference) preference).setEntryValues(entryValues.toArray(new CharSequence[0]));
+        }
+
+        private void updateUiFontPreferenceEntries() {
+            Preference preference = findPreference(getString(R.string.pk_app_ui_font));
+            if (!(preference instanceof ListPreference)) {
+                if (preference != null) {
+                    Log.e(TAG, "App UI font preference has an unexpected type: "
+                            + preference.getClass().getName());
+                }
+                return;
+            }
+
+            List<CharSequence> entries = new ArrayList<>();
+            List<CharSequence> entryValues = new ArrayList<>();
+            CharSequence[] builtInEntries = getResources().getTextArray(R.array.app_ui_font_entries);
+            CharSequence[] builtInValues = getResources().getTextArray(R.array.app_ui_font_values);
+            if (builtInEntries.length != builtInValues.length) {
+                Log.e(TAG, "Built-in app UI font entries and values have different lengths");
                 return;
             }
             for (int i = 0; i < builtInEntries.length; i++) {

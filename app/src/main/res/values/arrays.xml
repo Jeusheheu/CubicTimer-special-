@@ -94,6 +94,14 @@
         <item>monospace</item>
     </string-array>
 
+    <string-array name="app_ui_font_entries">
+        <item>@string/app_ui_font_default</item>
+    </string-array>
+
+    <string-array name="app_ui_font_values">
+        <item>default</item>
+    </string-array>
+
     <string-array name="pk_pref_array_inspection_alert">
         <item>@string/pk_inspection_alert_vibration</item>
         <item>@string/pk_inspection_alert_sound</item>

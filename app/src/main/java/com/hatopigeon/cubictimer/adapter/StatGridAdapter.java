@@ -11,6 +11,7 @@ import android.widget.TextView;
 import com.hatopigeon.cubicify.R;
 import com.hatopigeon.cubictimer.items.Stat;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.github.mikephil.charting.utils.Utils;
 
 import java.util.ArrayList;
@@ -60,6 +61,7 @@ public class StatGridAdapter extends BaseAdapter {
 
         //textView.setTypeface(ResourcesCompat.getFont(mContext, R.font.quicksand));
         textView.setText(mStats.get(position).getTime());
+        UiFontUtils.applyToViewTree(textView);
 
         return textView;
     }

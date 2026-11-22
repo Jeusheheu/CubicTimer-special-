@@ -43,6 +43,7 @@ import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.ScrambleGenerator;
 import com.hatopigeon.cubictimer.utils.TTIntent;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import java.text.DateFormat;
 import java.util.Date;
@@ -87,6 +88,7 @@ public class TimeDialog extends DialogFragment {
                         popupMenu.getMenuInflater().inflate(R.menu.menu_list_detail_history, popupMenu.getMenu());
                     else
                         popupMenu.getMenuInflater().inflate(R.menu.menu_list_detail, popupMenu.getMenu());
+                    UiFontUtils.applyToMenu(popupMenu.getMenu(), requireContext());
 
                     MenuPopupHelper popupHelper = new MenuPopupHelper(mContext, (MenuBuilder) popupMenu.getMenu(), overflowButton);
                     popupHelper.setForceShowIcon(true);

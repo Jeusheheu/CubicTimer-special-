@@ -28,6 +28,7 @@ import com.hatopigeon.cubictimer.listener.DialogListenerMessage;
 import com.hatopigeon.cubictimer.puzzle.TrainerScrambler;
 import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import java.util.List;
 
@@ -157,6 +158,7 @@ public class CategorySelectDialog extends DialogFragment {
             MenuInflater inflater = new MenuInflater(context);
 
             inflater.inflate(R.menu.menu_category_options, menuBuilder);
+            UiFontUtils.applyToMenu(menuBuilder, context);
             MenuPopupHelper popupHelper = new MenuPopupHelper(context, menuBuilder, view12);
             popupHelper.setForceShowIcon(true);
 

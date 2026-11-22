@@ -35,6 +35,7 @@ import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.TTIntent;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.hatopigeon.cubictimer.watcher.SolveTimeNumberTextWatcher;
 import com.hatopigeon.cubictimer.watcher.SolveTimeNumberTextWatcherSecond;
 import com.hatopigeon.cubictimer.watcher.SolveTimeNumberTextWatcherThousandth;
@@ -186,6 +187,7 @@ public class AddTimeDialog extends DialogFragment {
                 case R.id.button_more:
                     PopupMenu popupMenu = new PopupMenu(mContext, moreButton);
                     popupMenu.getMenuInflater().inflate(R.menu.menu_add_time_options, popupMenu.getMenu());
+                    UiFontUtils.applyToMenu(popupMenu.getMenu(), mContext);
                     popupMenu.setOnMenuItemClickListener(item -> {
                         switch (item.getItemId()) {
                             case R.id.penalty:

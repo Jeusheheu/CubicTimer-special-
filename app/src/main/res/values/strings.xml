@@ -382,6 +382,9 @@
     <string name="timer_font_quicksand">Quicksand</string>
     <string name="timer_font_sans_serif">Sans serif</string>
     <string name="timer_font_monospace">Monospace</string>
+    <string name="app_ui_font_title">App UI font</string>
+    <string name="app_ui_font_summary">Use an imported font for menus, navigation, dialogs, and other app text. Timer component settings remain independent.</string>
+    <string name="app_ui_font_default">System default</string>
     <string name="timer_font_import_title">Import custom font</string>
     <string name="timer_font_import_button">Import Font</string>
     <string name="timer_font_import_summary">Add a .ttf or .otf font file from your device</string>

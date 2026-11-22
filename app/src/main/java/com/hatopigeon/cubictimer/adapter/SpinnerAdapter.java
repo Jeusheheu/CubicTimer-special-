@@ -10,6 +10,7 @@ import android.widget.BaseAdapter;
 import android.widget.TextView;
 
 import com.hatopigeon.cubicify.R;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +64,7 @@ public class SpinnerAdapter extends BaseAdapter {
         TextView titleView = (TextView) view.findViewById(android.R.id.text1);
 
         titleView.setText(getTitle(position));
+        UiFontUtils.applyToViewTree(view);
 
 
         return view;
@@ -80,6 +82,7 @@ public class SpinnerAdapter extends BaseAdapter {
         titleView.setText(getTitle(position));
         titleView.setCompoundDrawablesWithIntrinsicBounds(null, null,
                 ContextCompat.getDrawable(mContext, R.drawable.ic_action_arrow_drop_down_white_24), null);
+        UiFontUtils.applyToViewTree(view);
 
 
         return view;

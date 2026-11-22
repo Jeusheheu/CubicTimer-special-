@@ -38,6 +38,7 @@ import com.hatopigeon.cubictimer.puzzle.TrainerScrambler;
 import com.hatopigeon.cubictimer.utils.InsetsUtils;
 import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.google.android.material.tabs.TabLayout;
 
 import androidx.appcompat.content.res.AppCompatResources;
@@ -286,6 +287,7 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
             // Inflate a menu resource providing context menu items
             MenuInflater inflater = mode.getMenuInflater();
             inflater.inflate(R.menu.menu_list_callback, menu);
+            UiFontUtils.applyToMenu(menu, requireContext());
 
             return true;
         }

@@ -10,6 +10,7 @@ import android.widget.BaseAdapter;
 import android.widget.TextView;
 
 import com.hatopigeon.cubicify.R;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import androidx.core.content.ContextCompat;
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
@@ -73,6 +74,7 @@ public class BottomSheetSpinnerAdapter extends BaseAdapter {
             titleView.setCompoundDrawablesWithIntrinsicBounds(icon, null, null, null);
         }
 
+        UiFontUtils.applyToViewTree(view);
         return view;
     }
 }

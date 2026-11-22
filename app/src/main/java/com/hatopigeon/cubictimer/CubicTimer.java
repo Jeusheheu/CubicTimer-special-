@@ -1,13 +1,21 @@
 package com.hatopigeon.cubictimer;
 
-import android.app.Application;
+import android.app.Activity;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
+import android.os.Bundle;
+import android.view.View;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.multidex.MultiDexApplication;
+import androidx.fragment.app.DialogFragment;
+import androidx.fragment.app.FragmentActivity;
+import androidx.fragment.app.FragmentManager;
 
 import com.hatopigeon.cubictimer.database.DatabaseHandler;
 import com.hatopigeon.cubictimer.utils.LocaleUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import net.danlew.android.joda.JodaTimeAndroid;
 
@@ -48,6 +56,53 @@ public class CubicTimer extends MultiDexApplication {
         sDBHandler = new DatabaseHandler();
 
         LocaleUtils.updateLocale(getAppContext());
+
+        registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
+            @Override
+            public void onActivityCreated(@NonNull Activity activity, Bundle savedInstanceState) {
+                if (activity instanceof FragmentActivity) {
+                    ((FragmentActivity) activity).getSupportFragmentManager()
+                            .registerFragmentLifecycleCallbacks(
+                                    new FragmentManager.FragmentLifecycleCallbacks() {
+                                        @Override
+                                        public void onFragmentViewCreated(
+                                                @NonNull FragmentManager fragmentManager,
+                                                @NonNull androidx.fragment.app.Fragment fragment,
+                                                @NonNull View view,
+                                                @Nullable Bundle savedInstanceState) {
+                                            UiFontUtils.applyToViewTree(view);
+                                        }
+
+                                        @Override
+                                        public void onFragmentStarted(
+                                                @NonNull FragmentManager fragmentManager,
+                                                @NonNull androidx.fragment.app.Fragment fragment) {
+                                            if (fragment instanceof DialogFragment) {
+                                                DialogFragment dialogFragment =
+                                                        (DialogFragment) fragment;
+                                                if (dialogFragment.getDialog() != null
+                                                        && dialogFragment.getDialog().getWindow() != null) {
+                                                    UiFontUtils.applyToViewTree(dialogFragment.getDialog()
+                                                            .getWindow().getDecorView());
+                                                }
+                                            }
+                                        }
+                                    }, true);
+                }
+            }
+
+            @Override
+            public void onActivityResumed(@NonNull Activity activity) {
+                UiFontUtils.applyToViewTree(activity.getWindow().getDecorView());
+            }
+
+            @Override public void onActivityStarted(@NonNull Activity activity) { }
+            @Override public void onActivityPaused(@NonNull Activity activity) { }
+            @Override public void onActivityStopped(@NonNull Activity activity) { }
+            @Override public void onActivitySaveInstanceState(
+                    @NonNull Activity activity, @NonNull Bundle outState) { }
+            @Override public void onActivityDestroyed(@NonNull Activity activity) { }
+        });
     }
 
     /**
