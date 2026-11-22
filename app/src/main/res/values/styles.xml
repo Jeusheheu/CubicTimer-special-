@@ -136,6 +136,9 @@
         <item name="colorPrimaryDark">#0062ff</item>
     </style>
 
+    <style name="ShapeAppearance.CubicTimer" parent="ShapeAppearance.Material3.MediumComponent" />
+    <style name="ShapeAppearanceOverlay.CubicTimer" parent="ShapeAppearanceOverlay.Material3.Button" />
+
     <style name="ShapeAppearance.CubicTimer.Small">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">16dp</item>
