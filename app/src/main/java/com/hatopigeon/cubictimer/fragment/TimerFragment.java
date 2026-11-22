@@ -25,6 +25,7 @@ import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -51,13 +52,19 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.animation.DecelerateInterpolator;
+import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -104,6 +111,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.res.ResourcesCompat;
 import androidx.fragment.app.FragmentManager;
 
 import butterknife.BindView;
@@ -419,6 +427,21 @@ public class TimerFragment extends BaseFragment
     private boolean inspectionVibrationAlertEnabled;
     private boolean inspectionSoundAlertEnabled;
 
+    private final List<TimerLayoutItem> timerLayoutItems = new ArrayList<>();
+    private TimerLayoutItem selectedLayoutItem;
+    private CardView timerLayoutEditorPanel;
+    private Spinner timerLayoutComponentSpinner;
+    private Spinner timerLayoutPresetSpinner;
+    private CheckBox timerLayoutVisibleCheckbox;
+    private SeekBar timerLayoutSizeSeekBar;
+    private TextView timerLayoutSizeText;
+    private ScaleGestureDetector timerLayoutScaleDetector;
+    private ViewTreeObserver.OnGlobalLayoutListener timerLayoutVisibilityListener;
+    private boolean isEditingTimerLayout;
+    private boolean isUpdatingLayoutEditor;
+    private float lastLayoutTouchX;
+    private float lastLayoutTouchY;
+    private boolean timerLayoutApplied;
 
     private boolean timeLimitAlertEnabled;
     private boolean timeLimitVibrationAlertEnabled;
@@ -1043,6 +1066,9 @@ public class TimerFragment extends BaseFragment
         startTimerLayout.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View view, MotionEvent motionEvent) {
+                if (isEditingTimerLayout) {
+                    return true;
+                }
 
                 if (!animationDone || isLocked && !isRunning) {
                     // Not ready to start the timer, yet. May be waiting on the animation of the
@@ -1168,6 +1194,10 @@ public class TimerFragment extends BaseFragment
                 .addCallback(getViewLifecycleOwner(), new OnBackPressedCallback(true) {
                     @Override
                     public void handleOnBackPressed() {
+                        if (isEditingTimerLayout) {
+                            endLayoutEditing();
+                            return;
+                        }
                         if (isResumed() && (isRunning || countingDown)) {
                             if (backCancelEnabled) {
                                 cancelChronometer();
@@ -1183,6 +1213,8 @@ public class TimerFragment extends BaseFragment
                         setEnabled(true);
                     }
                 });
+
+        initializeTimerLayoutItems();
     }
 
     @Override
@@ -1201,6 +1233,7 @@ public class TimerFragment extends BaseFragment
     public void onResume() {
         if (DEBUG_ME) Log.d(TAG, "onResume()");
         super.onResume();
+        applyTimerFont();
         if (scrambleEnabled) {
             if (realScramble == null) {
                 generateNewScramble();
@@ -1210,6 +1243,508 @@ public class TimerFragment extends BaseFragment
         }
         mainLooper.post(this::connect);
         bleClientManager = new BleClientManager(mContext);
+    }
+
+    private void applyTimerFont() {
+        if (chronometer == null || lapTimeText == null) {
+            return;
+        }
+
+        Typeface typeface;
+        String font = Prefs.getString(R.string.pk_timer_font, "lato");
+        switch (font) {
+            case "quicksand":
+                typeface = Typeface.createFromAsset(
+                        requireContext().getAssets(), "fonts/Quicksand_Bold.ttf");
+                break;
+            case "sans_serif":
+                typeface = Typeface.create("sans-serif", Typeface.BOLD);
+                break;
+            case "monospace":
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD);
+                break;
+            case "lato":
+            default:
+                typeface = ResourcesCompat.getFont(requireContext(), R.font.lato_bold);
+                if (typeface == null) {
+                    throw new IllegalStateException("Lato timer font could not be loaded");
+                }
+                break;
+        }
+
+        chronometer.setTypeface(typeface);
+        lapTimeText.setTypeface(typeface);
+    }
+
+    private void initializeTimerLayoutItems() {
+        addTimerLayoutItem(R.id.scramble_box, R.string.timer_layout_scramble);
+        addTimerLayoutItem(R.id.chronometer, R.string.timer_layout_timer);
+        addTimerLayoutItem(R.id.lapTimeText, R.string.timer_layout_lap_times);
+        addTimerLayoutItem(R.id.inspection_text, R.string.timer_layout_inspection);
+        addTimerLayoutItem(R.id.qa_layout, R.string.timer_layout_quick_actions);
+        addTimerLayoutItem(R.id.qa_undo, R.string.timer_layout_undo);
+        addTimerLayoutItem(R.id.scramble_img, R.string.timer_layout_scramble_image);
+        addTimerLayoutItem(R.id.sessionRecentResultText, R.string.timer_layout_recent_results);
+        addTimerLayoutItem(R.id.detail_average_record_message, R.string.timer_layout_average_record);
+        addTimerLayoutItem(R.id.sessionDetailTextAverage, R.string.timer_layout_session_averages);
+        addTimerLayoutItem(R.id.sessionDetailTextOther, R.string.timer_layout_session_details);
+        addTimerLayoutItem(R.id.multi_phase_status_message, R.string.timer_layout_multi_phase_status);
+        addTimerLayoutItem(R.id.ble_status_message, R.string.timer_layout_bluetooth_status);
+        addTimerLayoutItem(R.id.serial_status_message, R.string.timer_layout_stack_timer_status);
+        addTimerLayoutItem(R.id.congratsText, R.string.timer_layout_personal_best);
+
+        timerLayoutVisibilityListener = () -> {
+            if (!timerLayoutApplied) {
+                applySavedTimerLayout();
+            }
+            enforceTimerLayoutVisibility();
+        };
+        rootLayout.getViewTreeObserver().addOnGlobalLayoutListener(timerLayoutVisibilityListener);
+        rootLayout.post(this::applySavedTimerLayout);
+    }
+
+    private void addTimerLayoutItem(int viewId, int labelResId) {
+        View itemView = rootLayout.findViewById(viewId);
+        if (itemView != null) {
+            timerLayoutItems.add(new TimerLayoutItem(viewId, labelResId, itemView));
+        }
+    }
+
+    private void applySavedTimerLayout() {
+        if (rootLayout == null || rootLayout.getWidth() == 0 || rootLayout.getHeight() == 0
+                || timerLayoutApplied) {
+            return;
+        }
+
+        for (TimerLayoutItem item : timerLayoutItems) {
+            String key = timerLayoutPreferenceKey(item);
+            item.translationX = Prefs.getPrefs().getFloat(key + ".x", 0f) * rootLayout.getWidth();
+            item.translationY = Prefs.getPrefs().getFloat(key + ".y", 0f) * rootLayout.getHeight();
+            item.scale = clampLayoutScale(Prefs.getPrefs().getFloat(key + ".scale", 1f));
+            item.visibilityMode = Prefs.getPrefs().getInt(key + ".visibility", 0);
+            item.translationX = clampLayoutTranslationX(item, item.translationX);
+            item.translationY = clampLayoutTranslationY(item, item.translationY);
+            applyTimerLayoutItem(item);
+        }
+        timerLayoutApplied = true;
+    }
+
+    private String timerLayoutPreferenceKey(TimerLayoutItem item) {
+        String orientation = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                ? "landscape" : "portrait";
+        return "timerLayout." + orientation + "."
+                + getResources().getResourceEntryName(item.viewId);
+    }
+
+    private void applyTimerLayoutItem(TimerLayoutItem item) {
+        item.view.setTranslationX(item.translationX);
+        item.view.setTranslationY(item.translationY);
+        item.view.setScaleX(item.scale);
+        item.view.setScaleY(item.scale);
+        enforceTimerLayoutVisibility(item);
+    }
+
+    private void enforceTimerLayoutVisibility() {
+        for (TimerLayoutItem item : timerLayoutItems) {
+            enforceTimerLayoutVisibility(item);
+        }
+    }
+
+    private void enforceTimerLayoutVisibility(TimerLayoutItem item) {
+        if (item.visibilityMode == 1 && item.view.getVisibility() != View.VISIBLE) {
+            item.view.setVisibility(View.VISIBLE);
+        } else if (item.visibilityMode == -1 && item.view.getVisibility() != View.GONE) {
+            item.view.setVisibility(View.GONE);
+        }
+    }
+
+    private void saveTimerLayoutItem(TimerLayoutItem item) {
+        if (rootLayout == null || rootLayout.getWidth() == 0 || rootLayout.getHeight() == 0) {
+            return;
+        }
+
+        String key = timerLayoutPreferenceKey(item);
+        Prefs.getPrefs().edit()
+                .putFloat(key + ".x", item.translationX / rootLayout.getWidth())
+                .putFloat(key + ".y", item.translationY / rootLayout.getHeight())
+                .putFloat(key + ".scale", item.scale)
+                .putInt(key + ".visibility", item.visibilityMode)
+                .apply();
+    }
+
+    public void beginLayoutEditing() {
+        if (rootLayout == null || !isAdded()) {
+            Log.w(TAG, "Could not open timer layout editor: timer view is unavailable");
+            return;
+        }
+        if (isRunning || countingDown) {
+            Toast.makeText(requireContext(), R.string.timer_layout_stop_timer_first,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (rootLayout.getWidth() == 0 || rootLayout.getHeight() == 0) {
+            rootLayout.post(this::beginLayoutEditing);
+            return;
+        }
+        if (!timerLayoutApplied) {
+            applySavedTimerLayout();
+        }
+        if (isEditingTimerLayout) {
+            return;
+        }
+
+        isEditingTimerLayout = true;
+        createTimerLayoutEditorPanel();
+        timerLayoutScaleDetector = new ScaleGestureDetector(requireContext(),
+                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    @Override
+                    public boolean onScale(ScaleGestureDetector detector) {
+                        if (selectedLayoutItem == null) {
+                            return false;
+                        }
+                        selectedLayoutItem.scale = clampLayoutScale(
+                                selectedLayoutItem.scale * detector.getScaleFactor());
+                        selectedLayoutItem.view.setScaleX(selectedLayoutItem.scale);
+                        selectedLayoutItem.view.setScaleY(selectedLayoutItem.scale);
+                        updateTimerLayoutControls(selectedLayoutItem);
+                        timerLayoutPresetSpinner.setSelection(0, false);
+                        return true;
+                    }
+                });
+
+        for (TimerLayoutItem item : timerLayoutItems) {
+            item.foregroundBeforeEdit = item.view.getForeground();
+            item.view.setOnTouchListener((view, event) -> onTimerLayoutItemTouch(item, event));
+        }
+        selectTimerLayoutItem(0);
+    }
+
+    private void createTimerLayoutEditorPanel() {
+        Context context = requireContext();
+        timerLayoutEditorPanel = new CardView(context);
+        timerLayoutEditorPanel.setCardBackgroundColor(
+                ThemeUtils.fetchAttrColor(context, R.attr.colorItemListBackground));
+        timerLayoutEditorPanel.setRadius(ThemeUtils.dpToPix(context, 8));
+        timerLayoutEditorPanel.setCardElevation(ThemeUtils.dpToPix(context, 8));
+
+        LinearLayout panelContent = new LinearLayout(context);
+        panelContent.setOrientation(LinearLayout.VERTICAL);
+        int padding = ThemeUtils.dpToPix(context, 8);
+        panelContent.setPadding(padding, padding, padding, padding);
+
+        LinearLayout topRow = new LinearLayout(context);
+        topRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView doneButton = new TextView(context);
+        doneButton.setText(R.string.timer_layout_done);
+        doneButton.setPadding(padding, padding, padding, padding);
+        doneButton.setOnClickListener(view -> endLayoutEditing());
+        topRow.addView(doneButton);
+
+        timerLayoutComponentSpinner = new Spinner(context);
+        List<String> componentNames = new ArrayList<>();
+        for (TimerLayoutItem item : timerLayoutItems) {
+            componentNames.add(getString(item.labelResId));
+        }
+        ArrayAdapter<String> componentAdapter = new ArrayAdapter<>(context,
+                android.R.layout.simple_spinner_item, componentNames);
+        componentAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        timerLayoutComponentSpinner.setAdapter(componentAdapter);
+        timerLayoutComponentSpinner.setOnItemSelectedListener(
+                new android.widget.AdapterView.OnItemSelectedListener() {
+                    @Override
+                    public void onItemSelected(android.widget.AdapterView<?> parent, View view,
+                                               int position, long id) {
+                        selectTimerLayoutItem(position);
+                    }
+
+                    @Override
+                    public void onNothingSelected(android.widget.AdapterView<?> parent) {
+                    }
+                });
+        topRow.addView(timerLayoutComponentSpinner,
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        timerLayoutPresetSpinner = new Spinner(context);
+        String[] presetNames = {
+                getString(R.string.timer_layout_preset_custom),
+                getString(R.string.timer_layout_preset_classic),
+                getString(R.string.timer_layout_preset_compact),
+                getString(R.string.timer_layout_preset_minimal)
+        };
+        ArrayAdapter<String> presetAdapter = new ArrayAdapter<>(context,
+                android.R.layout.simple_spinner_item, presetNames);
+        presetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        timerLayoutPresetSpinner.setAdapter(presetAdapter);
+        timerLayoutPresetSpinner.setOnItemSelectedListener(
+                new android.widget.AdapterView.OnItemSelectedListener() {
+                    @Override
+                    public void onItemSelected(android.widget.AdapterView<?> parent, View view,
+                                               int position, long id) {
+                        if (position > 0) {
+                            applyTimerLayoutPreset(position);
+                        }
+                    }
+
+                    @Override
+                    public void onNothingSelected(android.widget.AdapterView<?> parent) {
+                    }
+                });
+        topRow.addView(timerLayoutPresetSpinner);
+        panelContent.addView(topRow);
+
+        LinearLayout sizeRow = new LinearLayout(context);
+        sizeRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        timerLayoutVisibleCheckbox = new CheckBox(context);
+        timerLayoutVisibleCheckbox.setText(R.string.timer_layout_visible);
+        timerLayoutVisibleCheckbox.setOnCheckedChangeListener((button, checked) -> {
+            if (isUpdatingLayoutEditor || selectedLayoutItem == null) {
+                return;
+            }
+            selectedLayoutItem.visibilityMode = checked ? 1 : -1;
+            enforceTimerLayoutVisibility(selectedLayoutItem);
+            saveTimerLayoutItem(selectedLayoutItem);
+            timerLayoutPresetSpinner.setSelection(0, false);
+        });
+        sizeRow.addView(timerLayoutVisibleCheckbox);
+
+        timerLayoutSizeText = new TextView(context);
+        sizeRow.addView(timerLayoutSizeText);
+        timerLayoutSizeSeekBar = new SeekBar(context);
+        timerLayoutSizeSeekBar.setMax(150);
+        timerLayoutSizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (selectedLayoutItem == null || isUpdatingLayoutEditor) {
+                    return;
+                }
+                selectedLayoutItem.scale = (progress + 50) / 100f;
+                selectedLayoutItem.view.setScaleX(selectedLayoutItem.scale);
+                selectedLayoutItem.view.setScaleY(selectedLayoutItem.scale);
+                timerLayoutSizeText.setText(getString(R.string.timer_layout_size, progress + 50));
+                timerLayoutPresetSpinner.setSelection(0, false);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (selectedLayoutItem != null) {
+                    saveTimerLayoutItem(selectedLayoutItem);
+                }
+            }
+        });
+        sizeRow.addView(timerLayoutSizeSeekBar,
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        panelContent.addView(sizeRow);
+
+        TextView instructions = new TextView(context);
+        instructions.setText(R.string.timer_layout_instructions);
+        panelContent.addView(instructions);
+
+        timerLayoutEditorPanel.addView(panelContent);
+        RelativeLayout.LayoutParams panelParams = new RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        panelParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        int margin = ThemeUtils.dpToPix(context, 8);
+        panelParams.setMargins(margin, getActionBarSize() + margin, margin, margin);
+        rootLayout.addView(timerLayoutEditorPanel, panelParams);
+        timerLayoutEditorPanel.bringToFront();
+    }
+
+    private void selectTimerLayoutItem(int position) {
+        if (position < 0 || position >= timerLayoutItems.size()) {
+            return;
+        }
+        if (selectedLayoutItem != null) {
+            selectedLayoutItem.view.setForeground(selectedLayoutItem.foregroundBeforeEdit);
+        }
+        selectedLayoutItem = timerLayoutItems.get(position);
+
+        android.graphics.drawable.GradientDrawable selection =
+                new android.graphics.drawable.GradientDrawable();
+        selection.setColor(Color.TRANSPARENT);
+        selection.setStroke(ThemeUtils.dpToPix(requireContext(), 2),
+                ThemeUtils.fetchAttrColor(requireContext(), R.attr.colorAccent));
+        selection.setCornerRadius(ThemeUtils.dpToPix(requireContext(), 4));
+        selectedLayoutItem.view.setForeground(selection);
+        updateTimerLayoutControls(selectedLayoutItem);
+    }
+
+    private void updateTimerLayoutControls(TimerLayoutItem item) {
+        isUpdatingLayoutEditor = true;
+        boolean visible = item.visibilityMode == 1
+                || (item.visibilityMode == 0 && item.view.getVisibility() != View.GONE);
+        timerLayoutVisibleCheckbox.setChecked(visible);
+        int progress = Math.round(item.scale * 100f) - 50;
+        timerLayoutSizeSeekBar.setProgress(Math.max(0, Math.min(150, progress)));
+        timerLayoutSizeText.setText(getString(R.string.timer_layout_size,
+                Math.round(item.scale * 100f)));
+        isUpdatingLayoutEditor = false;
+    }
+
+    private boolean onTimerLayoutItemTouch(TimerLayoutItem item, MotionEvent event) {
+        if (!isEditingTimerLayout) {
+            return false;
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            int position = timerLayoutItems.indexOf(item);
+            timerLayoutComponentSpinner.setSelection(position);
+            selectTimerLayoutItem(position);
+            lastLayoutTouchX = event.getRawX();
+            lastLayoutTouchY = event.getRawY();
+        }
+        if (timerLayoutScaleDetector != null) {
+            timerLayoutScaleDetector.onTouchEvent(event);
+        }
+
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_MOVE:
+                if (event.getPointerCount() == 1
+                        && (timerLayoutScaleDetector == null
+                        || !timerLayoutScaleDetector.isInProgress())) {
+                    float dx = event.getRawX() - lastLayoutTouchX;
+                    float dy = event.getRawY() - lastLayoutTouchY;
+                    item.translationX = clampLayoutTranslationX(item, item.translationX + dx);
+                    item.translationY = clampLayoutTranslationY(item, item.translationY + dy);
+                    item.view.setTranslationX(item.translationX);
+                    item.view.setTranslationY(item.translationY);
+                    lastLayoutTouchX = event.getRawX();
+                    lastLayoutTouchY = event.getRawY();
+                    timerLayoutPresetSpinner.setSelection(0, false);
+                }
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                saveTimerLayoutItem(item);
+                return true;
+            case MotionEvent.ACTION_POINTER_UP:
+                lastLayoutTouchX = event.getRawX();
+                lastLayoutTouchY = event.getRawY();
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private float clampLayoutTranslationX(TimerLayoutItem item, float translation) {
+        return Math.max(-item.view.getLeft(),
+                Math.min(rootLayout.getWidth() - item.view.getRight(), translation));
+    }
+
+    private float clampLayoutTranslationY(TimerLayoutItem item, float translation) {
+        return Math.max(-item.view.getTop(),
+                Math.min(rootLayout.getHeight() - item.view.getBottom(), translation));
+    }
+
+    private void applyTimerLayoutPreset(int preset) {
+        for (TimerLayoutItem item : timerLayoutItems) {
+            item.translationX = 0f;
+            item.translationY = 0f;
+            item.scale = 1f;
+            item.visibilityMode = 0;
+            item.view.setVisibility(item.initialVisibility);
+        }
+        if (preset == 2) {
+            for (TimerLayoutItem item : timerLayoutItems) {
+                item.scale = 0.85f;
+            }
+        } else if (preset == 3) {
+            setTimerLayoutItemHidden(R.id.scramble_img, true);
+            setTimerLayoutItemHidden(R.id.sessionRecentResultText, true);
+            setTimerLayoutItemHidden(R.id.detail_average_record_message, true);
+            setTimerLayoutItemHidden(R.id.sessionDetailTextAverage, true);
+            setTimerLayoutItemHidden(R.id.sessionDetailTextOther, true);
+            setTimerLayoutItemHidden(R.id.multi_phase_status_message, true);
+            setTimerLayoutItemHidden(R.id.ble_status_message, true);
+            setTimerLayoutItemHidden(R.id.serial_status_message, true);
+            setTimerLayoutItemScale(R.id.chronometer, 1.15f);
+            setTimerLayoutItemScale(R.id.scramble_box, 0.9f);
+        }
+
+        for (TimerLayoutItem item : timerLayoutItems) {
+            applyTimerLayoutItem(item);
+            saveTimerLayoutItem(item);
+        }
+        if (selectedLayoutItem != null) {
+            updateTimerLayoutControls(selectedLayoutItem);
+        }
+    }
+
+    private void setTimerLayoutItemHidden(int viewId, boolean hidden) {
+        TimerLayoutItem item = findTimerLayoutItem(viewId);
+        if (item != null) {
+            item.visibilityMode = hidden ? -1 : 1;
+        }
+    }
+
+    private void setTimerLayoutItemScale(int viewId, float scale) {
+        TimerLayoutItem item = findTimerLayoutItem(viewId);
+        if (item != null) {
+            item.scale = scale;
+        }
+    }
+
+    private TimerLayoutItem findTimerLayoutItem(int viewId) {
+        for (TimerLayoutItem item : timerLayoutItems) {
+            if (item.viewId == viewId) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private void endLayoutEditing() {
+        if (!isEditingTimerLayout) {
+            return;
+        }
+        isEditingTimerLayout = false;
+        for (TimerLayoutItem item : timerLayoutItems) {
+            saveTimerLayoutItem(item);
+            item.view.setOnTouchListener(null);
+            item.view.setForeground(item.foregroundBeforeEdit);
+        }
+        timerLayoutScaleDetector = null;
+        selectedLayoutItem = null;
+        if (timerLayoutEditorPanel != null) {
+            rootLayout.removeView(timerLayoutEditorPanel);
+            timerLayoutEditorPanel = null;
+        }
+    }
+
+    private float clampLayoutScale(float scale) {
+        return Math.max(0.5f, Math.min(2f, scale));
+    }
+
+    private float getTimerLayoutTranslationY(View view, float animationOffset) {
+        TimerLayoutItem item = findTimerLayoutItem(view.getId());
+        return (item == null ? 0f : item.translationY) + animationOffset;
+    }
+
+    private float getTimerLayoutScale(View view, float animationScale) {
+        TimerLayoutItem item = findTimerLayoutItem(view.getId());
+        return (item == null ? 1f : item.scale) * animationScale;
+    }
+
+    private static final class TimerLayoutItem {
+        final int viewId;
+        final int labelResId;
+        final View view;
+        float translationX;
+        float translationY;
+        float scale = 1f;
+        int visibilityMode;
+        final int initialVisibility;
+        Drawable foregroundBeforeEdit;
+
+        TimerLayoutItem(int viewId, int labelResId, View view) {
+            this.viewId = viewId;
+            this.labelResId = labelResId;
+            this.view = view;
+            this.initialVisibility = view.getVisibility();
+        }
     }
 
     @Override
@@ -1640,18 +2175,18 @@ public class TimerFragment extends BaseFragment
 
         // reset chronometer position
         chronometer.animate()
-                .scaleX(1f)
-                .scaleY(1f)
+                .scaleX(getTimerLayoutScale(chronometer, 1f))
+                .scaleY(getTimerLayoutScale(chronometer, 1f))
                 .setDuration(mAnimationDuration);
         inspectionText.animate()
-                .translationY(0)
+                .translationY(getTimerLayoutTranslationY(inspectionText, 0))
                 .setDuration(mAnimationDuration);
 
         if (scrambleEnabled) {
             scrambleBox.setVisibility(View.VISIBLE);
             scrambleBox.animate()
                     .alpha(1)
-                    .translationY(0)
+                    .translationY(getTimerLayoutTranslationY(scrambleBox, 0))
                     .setDuration(mAnimationDuration);
             scrambleBox.setEnabled(true);
             if (scrambleImgEnabled) {
@@ -1674,7 +2209,7 @@ public class TimerFragment extends BaseFragment
                 detailTextAvg.setVisibility(View.VISIBLE);
                 detailTextAvg.animate()
                         .alpha(1)
-                        .translationY(0)
+                        .translationY(getTimerLayoutTranslationY(detailTextAvg, 0))
                         .setDuration(mAnimationDuration);
             }
 
@@ -1682,7 +2217,7 @@ public class TimerFragment extends BaseFragment
                 detailTextOther.setVisibility(View.VISIBLE);
                 detailTextOther.animate()
                         .alpha(1)
-                        .translationY(0)
+                        .translationY(getTimerLayoutTranslationY(detailTextOther, 0))
                         .setDuration(mAnimationDuration);
             }
         }
@@ -1692,7 +2227,7 @@ public class TimerFragment extends BaseFragment
                 recentResultText.setVisibility(View.VISIBLE);
                 recentResultText.animate()
                         .alpha(1)
-                        .translationY(0)
+                        .translationY(getTimerLayoutTranslationY(recentResultText, 0))
                         .setDuration(mAnimationDuration);
             }
         }
@@ -1701,7 +2236,7 @@ public class TimerFragment extends BaseFragment
                 serialStatusMessage.setVisibility(View.VISIBLE);
                 serialStatusMessage.animate()
                         .alpha(1)
-                        .translationY(0)
+                        .translationY(getTimerLayoutTranslationY(serialStatusMessage, 0))
                         .setDuration(mAnimationDuration);
             }
         }
@@ -1710,7 +2245,7 @@ public class TimerFragment extends BaseFragment
                 bleStatusMessage.setVisibility(View.VISIBLE);
                 bleStatusMessage.animate()
                         .alpha(1)
-                        .translationY(0)
+                        .translationY(getTimerLayoutTranslationY(bleStatusMessage, 0))
                         .setDuration(mAnimationDuration);
                 }
         }
@@ -1721,14 +2256,14 @@ public class TimerFragment extends BaseFragment
         scrambleImg.setEnabled(true);
         scrambleImg.animate()
                 .alpha(1)
-                .translationY(0)
+                .translationY(getTimerLayoutTranslationY(scrambleImg, 0))
                 .setDuration(mAnimationDuration);
     }
 
     private void hideImage() {
         scrambleImg.animate()
                 .alpha(0)
-                .translationY(scrambleImg.getHeight())
+                .translationY(getTimerLayoutTranslationY(scrambleImg, scrambleImg.getHeight()))
                 .setDuration(mAnimationDuration)
                 .withEndAction(() -> {
                     if (scrambleImg != null) {
@@ -1763,11 +2298,11 @@ public class TimerFragment extends BaseFragment
 
         // bring chronometer up a bit
         chronometer.animate()
-                .scaleX(1.15f)
-                .scaleY(1.15f)
+                .scaleX(getTimerLayoutScale(chronometer, 1.15f))
+                .scaleY(getTimerLayoutScale(chronometer, 1.15f))
                 .setDuration(mAnimationDuration);
         inspectionText.animate()
-                .translationY(-getActionBarSize())
+                .translationY(getTimerLayoutTranslationY(inspectionText, -getActionBarSize()))
                 .setDuration(mAnimationDuration);
 
         // Resize startTimerLayout to fill the entire screen. This removes the little margin
@@ -1783,7 +2318,8 @@ public class TimerFragment extends BaseFragment
                 scrambleBox.setEnabled(false);
                 scrambleBox.animate()
                         .alpha(0)
-                        .translationY(-scrambleBox.getHeight())
+                        .translationY(getTimerLayoutTranslationY(
+                                scrambleBox, -scrambleBox.getHeight()))
                         .setDuration(mAnimationDuration)
                         .withEndAction(() -> {
                             if (scrambleBox != null) scrambleBox.setVisibility(View.INVISIBLE);
@@ -1802,19 +2338,22 @@ public class TimerFragment extends BaseFragment
         if (sessionStatsEnabled) {
             detailTextAvg.animate()
                     .alpha(0)
-                    .translationY(detailTextAvg.getHeight())
+                    .translationY(getTimerLayoutTranslationY(detailTextAvg,
+                            detailTextAvg.getHeight()))
                     .setDuration(mAnimationDuration)
                     .withEndAction(() -> {if(detailTextAvg!=null) detailTextAvg.setVisibility(View.INVISIBLE);});
             detailTextOther.animate()
                     .alpha(0)
-                    .translationY(detailTextOther.getHeight())
+                    .translationY(getTimerLayoutTranslationY(detailTextOther,
+                            detailTextOther.getHeight()))
                     .setDuration(mAnimationDuration)
                     .withEndAction(() -> {if(detailTextOther!=null) detailTextOther.setVisibility(View.INVISIBLE);});
         }
         if (recentResultsEnabled) {
             recentResultText.animate()
                     .alpha(0)
-                    .translationY(recentResultText.getHeight())
+                    .translationY(getTimerLayoutTranslationY(recentResultText,
+                            recentResultText.getHeight()))
                     .setDuration(mAnimationDuration)
                     .withEndAction(() -> {if(recentResultText!=null) recentResultText.setVisibility(View.INVISIBLE);});
         }
@@ -1961,6 +2500,14 @@ public class TimerFragment extends BaseFragment
     @Override
     public void onDestroyView() {
         if (DEBUG_ME) Log.d(TAG, "onDestroyView()");
+        endLayoutEditing();
+        if (rootLayout != null && timerLayoutVisibilityListener != null
+                && rootLayout.getViewTreeObserver().isAlive()) {
+            rootLayout.getViewTreeObserver()
+                    .removeOnGlobalLayoutListener(timerLayoutVisibilityListener);
+        }
+        timerLayoutItems.clear();
+        timerLayoutApplied = false;
         cancelCountdowns();
         StatisticsCache.getInstance().unregisterObserver(this);
         mRecentStatistics = null;

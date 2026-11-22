@@ -376,8 +376,39 @@
 
     <string name="timer_text_offset">Timer text offset</string>
     <string name="timer_text_offset_summary">Controls the position of the timer text</string>
+    <string name="timer_font_title">Timer font</string>
+    <string name="timer_font_summary">Choose the font used for timer text</string>
+    <string name="timer_font_lato">Lato</string>
+    <string name="timer_font_quicksand">Quicksand</string>
+    <string name="timer_font_sans_serif">Sans serif</string>
+    <string name="timer_font_monospace">Monospace</string>
     <string name="timer_text_size">Timer text size</string>
     <string name="timer_text_size_summary">Controls the size of the timer text</string>
+    <string name="drawer_customize_timer_layout">Customize timer layout</string>
+    <string name="timer_layout_done">Done</string>
+    <string name="timer_layout_instructions">Drag an item to move it. Pinch or use Size to resize.</string>
+    <string name="timer_layout_visible">Visible</string>
+    <string name="timer_layout_stop_timer_first">Stop the timer before editing its layout.</string>
+    <string name="timer_layout_size">Size: %1$d%%</string>
+    <string name="timer_layout_preset_custom">Custom</string>
+    <string name="timer_layout_preset_classic">Classic</string>
+    <string name="timer_layout_preset_compact">Compact</string>
+    <string name="timer_layout_preset_minimal">Minimal</string>
+    <string name="timer_layout_scramble">Scramble</string>
+    <string name="timer_layout_timer">Timer</string>
+    <string name="timer_layout_lap_times">Lap times</string>
+    <string name="timer_layout_inspection">Inspection</string>
+    <string name="timer_layout_quick_actions">Quick actions</string>
+    <string name="timer_layout_undo">Undo action</string>
+    <string name="timer_layout_scramble_image">Scramble image</string>
+    <string name="timer_layout_recent_results">Recent results</string>
+    <string name="timer_layout_average_record">Average record</string>
+    <string name="timer_layout_session_averages">Session averages</string>
+    <string name="timer_layout_session_details">Session details</string>
+    <string name="timer_layout_multi_phase_status">Multi-phase status</string>
+    <string name="timer_layout_bluetooth_status">Bluetooth status</string>
+    <string name="timer_layout_stack_timer_status">Stack timer status</string>
+    <string name="timer_layout_personal_best">Personal best message</string>
 
     <string name="title_activity_about">About and feedback</string>
     <string name="title_activity_settings">Settings</string>
@@ -529,16 +560,19 @@
     <string name="pref_summary_menu_background">Disables the tinted background behind the top menu bar</string>
     <string name="pref_title_tab_background">Disable tab bar background</string>
     <string name="pref_summary_tab_background">Disables the tinted background behind the bottom tab bar</string>
-    <string name="pref_screen_title_bg_image">Background image settings</string>
-    <string name="pref_title_bg_image_enabled">Show background image</string>
-    <string name="pref_summary_bg_image_enabled">Display the selected image as the background</string>
-    <string name="pref_title_bg_image_portrait">Choose background image (portrait)</string>
-    <string name="pref_summary_bg_image_portrait">Choose a background image for portrait orientation</string>
-    <string name="pref_title_bg_image_landscape">Choose background image (landscape)</string>
-    <string name="pref_summary_bg_image_landscape">Choose a background image for landscape orientation</string>
+    <string name="pref_screen_title_bg_image">Background media settings</string>
+    <string name="pref_title_bg_image_enabled">Show background media</string>
+    <string name="pref_summary_bg_image_enabled">Display the selected image, GIF, or video behind the timer</string>
+    <string name="pref_title_bg_image_portrait">Choose background media (portrait)</string>
+    <string name="pref_summary_bg_image_portrait">Choose an image, GIF, or video for portrait orientation</string>
+    <string name="pref_title_bg_image_landscape">Choose background media (landscape)</string>
+    <string name="pref_summary_bg_image_landscape">Choose an image, GIF, or video for landscape orientation</string>
     <string name="pref_title_bg_image_opacity">Theme color overlay opacity</string>
-    <string name="pref_summary_bg_image_opacity">Set the opacity of the theme color overlay above the background image (0% = fully transparent)</string>
+    <string name="pref_summary_bg_image_opacity">Set the opacity of the theme color overlay above background media (0% = fully transparent)</string>
     <string name="image_load_fail">Failed to load image</string>
+    <string name="background_media_type_not_supported">Select an image, GIF, or video file</string>
+    <string name="background_video_access_fail">Could not keep access to the selected video</string>
+    <string name="background_video_playback_failed">Background video could not be played</string>
     <string name="dialog_theme_text_style">Text style</string>
     <string name="pref_screen_title_general">General</string>
     <string name="pref_screen_title_list">List</string>

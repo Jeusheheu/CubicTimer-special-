@@ -16,6 +16,12 @@
         android:clickable="false"
         android:focusable="false" />
 
+    <TextureView
+        android:id="@+id/bgVideo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <View
         android:id="@+id/bgGradientOverlay"
         android:layout_width="match_parent"

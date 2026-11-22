@@ -133,6 +133,9 @@
     <style name="SettingsTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/md_white_1000</item>
         <item name="colorPrimaryDark">@color/md_white_1000</item>
+        <item name="colorSurface">@color/md_white_1000</item>
+        <item name="colorOnSurface">@color/black_text</item>
+        <item name="android:colorBackground">#F7F6FA</item>
         <item name="colorAccent">@color/md_blue_A700</item>
         <item name="android:fontFamily">?defaultFontFamily</item>
         <item name="colorItemListBackgroundSelected">@color/md_indigo_200</item>

@@ -7,8 +7,14 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.PorterDuff;
+import android.graphics.SurfaceTexture;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Animatable;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
@@ -18,7 +24,11 @@ import androidx.annotation.Nullable;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.Target;
 import com.bumptech.glide.signature.ObjectKey;
 import com.hatopigeon.cubictimer.fragment.dialog.CategorySelectDialog;
 import com.hatopigeon.cubictimer.fragment.dialog.BottomSheetTrainerDialog;
@@ -51,6 +61,8 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.Surface;
+import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -60,6 +72,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+import android.widget.Toast;
+import android.webkit.MimeTypeMap;
 
 import com.hatopigeon.cubicify.R;
 import com.hatopigeon.cubictimer.CubicTimer;
@@ -72,6 +86,7 @@ import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.Wrapper;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 import butterknife.BindView;
@@ -166,6 +181,7 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
     @BindView(R.id.puzzleNumber) TextView puzzleNumber;
 
     @BindView(R.id.bgImage) ImageView bgImage;
+    @BindView(R.id.bgVideo) TextureView bgVideo;
     @BindView(R.id.bgGradientOverlay) View bgGradientOverlay;
 
     ActionMode actionMode;
@@ -190,6 +206,12 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
 
     private boolean bgImageEnabled;
     private int colorOverlayOpacity;
+    private Uri backgroundVideoUri;
+    private MediaPlayer backgroundVideoPlayer;
+    private Surface backgroundVideoSurface;
+    private boolean backgroundVideoPrepared;
+    private boolean backgroundVideoPlaying;
+    private boolean backgroundVideoFailed;
 
     private int selectCount = 0;
 
@@ -498,18 +520,41 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        bgVideo.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override
+            public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
+                prepareBackgroundVideo(surface);
+            }
+
+            @Override
+            public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface, int width, int height) {
+                updateBackgroundVideoTransform(width, height);
+            }
+
+            @Override
+            public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
+                releaseBackgroundVideoPlayer();
+                return true;
+            }
+
+            @Override
+            public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
+            }
+        });
+
         GradientDrawable grad = ThemeUtils.fetchBackgroundGradient(mContext, ThemeUtils.getPreferredTheme());
 
         bgImageEnabled = Prefs.getBoolean(R.string.pk_bg_image_enabled, false);
 
         if (bgImageEnabled) {
-            if (applyBackgroundImage()) {
+            if (applyBackgroundMedia()) {
                 colorOverlayOpacity = Prefs.getInt(R.string.pk_bg_image_opacity,
                         mContext.getResources().getInteger(R.integer.defaultColorOverlayOpacity)) * 255 / 100;
                 colorOverlayOpacity = Math.max(0, Math.min(colorOverlayOpacity, 255));
                 grad.setAlpha(colorOverlayOpacity);
             }
         } else {
+            clearBackgroundMedia();
             bgImage.setImageDrawable(null);
         }
         bgGradientOverlay.setBackground(grad);
@@ -602,6 +647,7 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
             public void onPageSelected(int position) {
                 setupPage(position);
                 currentPage = position;
+                updateBackgroundMediaPlayback();
             }
 
             @Override
@@ -614,46 +660,214 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
         registerReceiver(mUIInteractionReceiver);
     }
 
-    private boolean applyBackgroundImage() {
-        try {
-            int orientation = getResources().getConfiguration().orientation;
-            int key = (orientation == Configuration.ORIENTATION_PORTRAIT)
-                    ? R.string.pk_bg_image_portrait : R.string.pk_bg_image_landscape;
-
-            String path = Prefs.getString(key, null);
-
-            if (TextUtils.isEmpty(path) || !new File(path).exists()) {
-                if (isAdded()) {
-                    Glide.with(this).clear(bgImage);
-                    bgImage.setImageDrawable(null);
-                }
-                return false;
-            }
-
-            File f = new File(path);
-            RequestOptions opts = new RequestOptions()
-                    .centerCrop()
-                    .signature(new ObjectKey(f.lastModified()));
-
-            if (isAdded()) {
-                Glide.with(this)
-                        .load(f)
-                        .apply(opts)
-                        .into(bgImage);
-            }
-
-            return true;
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            try {
-                if (isAdded()) {
-                    Glide.with(this).clear(bgImage);
-                    bgImage.setImageDrawable(null);
-                }
-            } catch (Exception ignored) {}
+    private boolean applyBackgroundMedia() {
+        int orientation = getResources().getConfiguration().orientation;
+        int key = (orientation == Configuration.ORIENTATION_PORTRAIT)
+                ? R.string.pk_bg_image_portrait : R.string.pk_bg_image_landscape;
+        String selection = Prefs.getString(key, null);
+        if (TextUtils.isEmpty(selection)) {
+            clearBackgroundMedia();
             return false;
         }
+
+        Uri uri;
+        String mimeType;
+        if (selection.startsWith("content://")) {
+            uri = Uri.parse(selection);
+            mimeType = requireContext().getContentResolver().getType(uri);
+        } else {
+            File file = selection.startsWith("file://")
+                    ? new File(Uri.parse(selection).getPath()) : new File(selection);
+            if (!file.isFile()) {
+                Log.w(TAG, "Selected background media is no longer available: " + selection);
+                clearBackgroundMedia();
+                return false;
+            }
+            uri = Uri.fromFile(file);
+            String extension = MimeTypeMap.getFileExtensionFromUrl(file.getName());
+            mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+        }
+
+        if (mimeType == null) {
+            Log.w(TAG, "Could not determine background media type: " + selection);
+            clearBackgroundMedia();
+            return false;
+        }
+        if (mimeType.startsWith("video/")) {
+            bgImage.setImageDrawable(null);
+            bgImage.setVisibility(View.GONE);
+            bgVideo.setVisibility(View.VISIBLE);
+            setBackgroundVideo(uri);
+            return true;
+        }
+        if (mimeType.startsWith("image/")) {
+            releaseBackgroundVideoPlayer();
+            backgroundVideoUri = null;
+            bgVideo.setVisibility(View.GONE);
+            bgImage.setVisibility(View.VISIBLE);
+            RequestOptions options = new RequestOptions().centerCrop();
+            if ("file".equals(uri.getScheme())) {
+                options = options.signature(new ObjectKey(new File(uri.getPath()).lastModified()));
+            }
+            Glide.with(this).load(uri).apply(options)
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(@Nullable GlideException error, Object model,
+                                                    Target<Drawable> target, boolean isFirstResource) {
+                            Log.e(TAG, "Failed to load selected background image", error);
+                            if (isAdded()) {
+                                Toast.makeText(requireContext(), R.string.image_load_fail,
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                            return false;
+                        }
+
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model,
+                                                       Target<Drawable> target, DataSource dataSource,
+                                                       boolean isFirstResource) {
+                            updateBackgroundMediaPlayback();
+                            return false;
+                        }
+                    })
+                    .into(bgImage);
+            return true;
+        }
+
+        Log.w(TAG, "Unsupported selected background media type: " + mimeType);
+        clearBackgroundMedia();
+        return false;
+    }
+
+    private void clearBackgroundMedia() {
+        releaseBackgroundVideoPlayer();
+        backgroundVideoUri = null;
+        if (bgImage != null) {
+            Glide.with(this).clear(bgImage);
+            bgImage.setImageDrawable(null);
+            bgImage.setVisibility(View.VISIBLE);
+        }
+        if (bgVideo != null) {
+            bgVideo.setVisibility(View.GONE);
+        }
+    }
+
+    private void setBackgroundVideo(@NonNull Uri uri) {
+        releaseBackgroundVideoPlayer();
+        backgroundVideoUri = uri;
+        backgroundVideoFailed = false;
+        if (bgVideo.isAvailable()) {
+            prepareBackgroundVideo(bgVideo.getSurfaceTexture());
+        }
+    }
+
+    private void prepareBackgroundVideo(@NonNull SurfaceTexture surfaceTexture) {
+        if (backgroundVideoUri == null || backgroundVideoFailed || backgroundVideoPlayer != null) {
+            return;
+        }
+
+        MediaPlayer player = new MediaPlayer();
+        backgroundVideoPlayer = player;
+        try {
+            backgroundVideoSurface = new Surface(surfaceTexture);
+            player.setSurface(backgroundVideoSurface);
+            player.setDataSource(requireContext(), backgroundVideoUri);
+            player.setLooping(true);
+            player.setVolume(0f, 0f);
+            player.setOnVideoSizeChangedListener((mediaPlayer, width, height) ->
+                    updateBackgroundVideoTransform(bgVideo.getWidth(), bgVideo.getHeight()));
+            player.setOnPreparedListener(mediaPlayer -> {
+                if (backgroundVideoPlayer != mediaPlayer) {
+                    return;
+                }
+                backgroundVideoPrepared = true;
+                updateBackgroundVideoTransform(bgVideo.getWidth(), bgVideo.getHeight());
+                updateBackgroundMediaPlayback();
+            });
+            player.setOnErrorListener((mediaPlayer, what, extra) -> {
+                Log.e(TAG, "Background video playback failed (what=" + what + ", extra=" + extra + ")");
+                backgroundVideoFailed = true;
+                releaseBackgroundVideoPlayer();
+                if (isAdded()) {
+                    Toast.makeText(requireContext(), R.string.background_video_playback_failed,
+                            Toast.LENGTH_SHORT).show();
+                }
+                return true;
+            });
+            player.prepareAsync();
+        } catch (IOException | IllegalArgumentException | IllegalStateException | SecurityException e) {
+            Log.e(TAG, "Could not prepare selected background video", e);
+            backgroundVideoFailed = true;
+            releaseBackgroundVideoPlayer();
+            if (isAdded()) {
+                Toast.makeText(requireContext(), R.string.background_video_playback_failed,
+                        Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void updateBackgroundVideoTransform(int viewWidth, int viewHeight) {
+        MediaPlayer player = backgroundVideoPlayer;
+        if (player == null || !backgroundVideoPrepared || viewWidth <= 0 || viewHeight <= 0) {
+            return;
+        }
+        int videoWidth = player.getVideoWidth();
+        int videoHeight = player.getVideoHeight();
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            return;
+        }
+
+        float scale = Math.max((float) viewWidth / videoWidth, (float) viewHeight / videoHeight);
+        float scaledWidth = videoWidth * scale;
+        float scaledHeight = videoHeight * scale;
+        Matrix transform = new Matrix();
+        transform.setScale(scaledWidth / viewWidth, scaledHeight / viewHeight, viewWidth / 2f, viewHeight / 2f);
+        bgVideo.setTransform(transform);
+    }
+
+    private void updateBackgroundMediaPlayback() {
+        if (bgImage != null && bgImage.getDrawable() instanceof Animatable) {
+            Animatable animatedImage = (Animatable) bgImage.getDrawable();
+            if (isResumed() && currentPage == TIMER_PAGE) {
+                animatedImage.start();
+            } else {
+                animatedImage.stop();
+            }
+        }
+
+        if (backgroundVideoPlayer == null || !backgroundVideoPrepared) {
+            return;
+        }
+        boolean shouldPlay = isResumed() && currentPage == TIMER_PAGE && bgImageEnabled;
+        try {
+            if (shouldPlay && !backgroundVideoPlaying) {
+                backgroundVideoPlayer.start();
+                backgroundVideoPlaying = true;
+            } else if (!shouldPlay && backgroundVideoPlaying) {
+                backgroundVideoPlayer.pause();
+                backgroundVideoPlaying = false;
+            }
+        } catch (IllegalStateException e) {
+            Log.e(TAG, "Could not update background video playback state", e);
+            backgroundVideoFailed = true;
+            releaseBackgroundVideoPlayer();
+        }
+    }
+
+    private void releaseBackgroundVideoPlayer() {
+        if (backgroundVideoPlayer != null) {
+            backgroundVideoPlayer.setOnPreparedListener(null);
+            backgroundVideoPlayer.setOnVideoSizeChangedListener(null);
+            backgroundVideoPlayer.setOnErrorListener(null);
+            backgroundVideoPlayer.release();
+            backgroundVideoPlayer = null;
+        }
+        if (backgroundVideoSurface != null) {
+            backgroundVideoSurface.release();
+            backgroundVideoSurface = null;
+        }
+        backgroundVideoPrepared = false;
+        backgroundVideoPlaying = false;
     }
 
     @Override
@@ -718,6 +932,13 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
         // Sets up the toolbar with the icons appropriate to the current page.
         mToolbar.post(() -> setupPage(currentPage));
         super.onResume();
+        updateBackgroundMediaPlayback();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        updateBackgroundMediaPlayback();
     }
 
     @Override
@@ -729,10 +950,13 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
 
     @Override
     public void onDestroyView() {
+        releaseBackgroundVideoPlayer();
+        backgroundVideoUri = null;
         if (bgImage != null) {
             Glide.with(this).clear(bgImage);
             bgImage = null;
         }
+        bgVideo = null;
         bgGradientOverlay = null;
 
         super.onDestroyView();
@@ -933,6 +1157,17 @@ public class TimerFragmentMain extends BaseFragment implements DialogListenerMes
 
     public int getCurrentPage() {
         return viewPager.getCurrentItem();
+    }
+
+    public void beginTimerLayoutEditing() {
+        viewPager.setCurrentItem(TIMER_PAGE, false);
+        for (Fragment fragment : getChildFragmentManager().getFragments()) {
+            if (fragment instanceof TimerFragment) {
+                ((TimerFragment) fragment).beginLayoutEditing();
+                return;
+            }
+        }
+        Log.w(TAG, "Could not open timer layout editor: timer page is unavailable");
     }
 
     protected class NavigationAdapter extends FragmentPagerAdapter {

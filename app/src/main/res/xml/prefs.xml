@@ -295,10 +295,13 @@
                     android:title="@string/millisecondsEnabledTitle" />
 
 
-                   <Preference
-                    android:key="pref_import_font"
-                    android:title="Import Font"
-                    android:summary="Load a custom TTF font file for the timer" />
+                <ListPreference
+                    android:defaultValue="lato"
+                    android:entries="@array/timer_font_entries"
+                    android:entryValues="@array/timer_font_values"
+                    android:key="@string/pk_timer_font"
+                    android:summary="@string/timer_font_summary"
+                    android:title="@string/timer_font_title" />
 
             </PreferenceCategory>
 

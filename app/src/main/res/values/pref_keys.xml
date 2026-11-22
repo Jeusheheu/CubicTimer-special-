@@ -103,6 +103,7 @@ THESE KEYS MUST NOT BE LOCALIZED!
     <string translatable="false" name="pk_show_quick_actions">buttonsEnabled</string>
     <string translatable="false" name="pk_timer_text_size">timerTextSize</string>
     <string translatable="false" name="pk_timer_text_offset">timerTextOffset</string>
+    <string translatable="false" name="pk_timer_font">timerFont</string>
     <string translatable="false" name="pk_advanced_timer_settings_enabled">enableAdvanced</string>
 
 

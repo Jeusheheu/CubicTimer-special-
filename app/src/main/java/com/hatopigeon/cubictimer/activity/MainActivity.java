@@ -119,6 +119,7 @@ public class MainActivity extends AppCompatActivity
     private static final int SETTINGS_ID      = 5;
     private static final int TRAINER_OLL_ID      = 14;
     private static final int TRAINER_PLL_ID      = 15;
+    private static final int CUSTOMIZE_LAYOUT_ID = 16;
 
 
     private static final int REQUEST_SETTING           = 42;
@@ -359,6 +360,13 @@ public class MainActivity extends AppCompatActivity
                                 .withSelectable(false)
                                 .withIdentifier(SCHEME_ID),
 
+                        new PrimaryDrawerItem()
+                                .withName(R.string.drawer_customize_timer_layout)
+                                .withIcon(R.drawable.ic_format_shapes_black_24dp)
+                                .withIconTintingEnabled(true)
+                                .withSelectable(false)
+                                .withIdentifier(CUSTOMIZE_LAYOUT_ID),
+
                         new DividerDrawerItem(),
 
                         new PrimaryDrawerItem()
@@ -464,6 +472,16 @@ public class MainActivity extends AppCompatActivity
                             case SCHEME_ID:
                                 SchemeSelectDialogMain.newInstance()
                                         .show(fragmentManager, "scheme_dialog");
+                                break;
+
+                            case CUSTOMIZE_LAYOUT_ID:
+                                TimerFragmentMain timerMain =
+                                        (TimerFragmentMain) fragmentManager.findFragmentByTag("fragment_main");
+                                if (timerMain != null) {
+                                    timerMain.beginTimerLayoutEditing();
+                                } else {
+                                    Log.e(TAG, "Could not open timer layout editor: timer screen is unavailable");
+                                }
                                 break;
 
                             case SETTINGS_ID:

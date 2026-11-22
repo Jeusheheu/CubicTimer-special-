@@ -312,7 +312,7 @@ public class SettingsActivity extends AppCompatActivity {
                         if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                             Uri uri = result.getData().getData();
                             if (uri != null) {
-                                onImagePicked(uri);
+                                onBackgroundMediaPicked(uri, result.getData().getFlags());
                             }
                         }
                     }
@@ -669,46 +669,77 @@ public class SettingsActivity extends AppCompatActivity {
 
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                     | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
 
             openDocLauncher.launch(intent);
         }
 
-        private void onImagePicked(@NonNull Uri uri) {
+        private void onBackgroundMediaPicked(@NonNull Uri uri, int grantedFlags) {
             final String fileName;
             final int key;
 
-            // decide extension from mime type
-            String extension = "jpg"; // fallback
             String mimeType = requireContext().getContentResolver().getType(uri);
-            if (mimeType != null) {
-                String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
-                if (ext != null) extension = ext;
+            if (mimeType == null
+                    || (!mimeType.startsWith("image/") && !mimeType.startsWith("video/"))) {
+                Toast.makeText(requireContext(), R.string.background_media_type_not_supported,
+                        Toast.LENGTH_SHORT).show();
+                return;
             }
 
             if (isBgImageSelectPortrait) {
-                fileName = "background_portrait." + extension;
                 key = R.string.pk_bg_image_portrait;
             } else {
-                fileName = "background_landscape." + extension;
                 key = R.string.pk_bg_image_landscape;
             }
 
+            if (mimeType.startsWith("video/")) {
+                int readPermission = grantedFlags & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                if (readPermission == 0) {
+                    Log.e(TAG, "Selected background video did not grant read access");
+                    Toast.makeText(requireContext(), R.string.background_video_access_fail,
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    requireContext().getContentResolver()
+                            .takePersistableUriPermission(uri, readPermission);
+                } catch (SecurityException e) {
+                    Log.e(TAG, "Could not retain access to selected background video", e);
+                    Toast.makeText(requireContext(), R.string.background_video_access_fail,
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                Prefs.edit().putString(key, uri.toString()).apply();
+                return;
+            }
+
+            String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+            if (extension == null) {
+                Toast.makeText(requireContext(), R.string.background_media_type_not_supported,
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+            fileName = isBgImageSelectPortrait
+                    ? "background_portrait." + extension : "background_landscape." + extension;
             File dst = new File(requireContext().getFilesDir(), fileName);
 
             Log.d(TAG, "onImagePicked copy start : " + fileName);
-            // copy image to internal file (API26+ -> Files.copy, else -> manual copy)
-            try (InputStream in = requireContext().getContentResolver().openInputStream(uri)) {
+            try (InputStream source = requireContext().getContentResolver().openInputStream(uri)) {
+                if (source == null) {
+                    throw new IOException("No data available for selected background image");
+                }
                 if (Build.VERSION.SDK_INT >= 26) {
-                    java.nio.file.Files.copy(in, dst.toPath(),
+                    java.nio.file.Files.copy(source, dst.toPath(),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 } else {
                     try (OutputStream out = new java.io.FileOutputStream(dst)) {
                         byte[] buf = new byte[64 * 1024]; // 64KB
                         int n;
-                        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                        while ((n = source.read(buf)) != -1) out.write(buf, 0, n);
                         out.flush();
                     }
                 }
@@ -718,10 +749,10 @@ public class SettingsActivity extends AppCompatActivity {
                         .putString(key, dst.getAbsolutePath())
                         .apply();
             } catch (IOException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to copy selected background image", e);
                 Toast.makeText(requireContext(), R.string.image_load_fail, Toast.LENGTH_SHORT).show();
             }
-            Log.d(TAG, "onImagePicked copy finish");
+            Log.d(TAG, "Background image copy finished : " + fileName);
         }
     }
 }
