@@ -1,4 +1,4 @@
-name: Build Debug APK
+name: Build Release APK
 
 on:
   push:
@@ -22,8 +22,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build Signed Release APK
         env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
           JAVA_TOOL_OPTIONS: >-
             --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
             --add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED
@@ -31,10 +32,23 @@ jobs:
             --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED
         run: |
           sed -i '/MaxPermSize/d' gradle.properties app/gradle.properties 2>/dev/null || true
-          ./gradlew assembleDebug --no-daemon
+          keytool -genkeypair -v \
+            -keystore release.keystore \
+            -storepass "$KEYSTORE_PASS" \
+            -keypass "$KEYSTORE_PASS" \
+            -alias cubictimer_special \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Cubic Timer Special Edition, OU=Special Edition, O=Cubic Timer Special Edition, L=Manila, S=Metro Manila, C=PH"
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$(pwd)/release.keystore" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASS" \
+            -Pandroid.injected.signing.key.alias="cubictimer_special" \
+            -Pandroid.injected.signing.key.password="$KEYSTORE_PASS"
 
-      - name: Upload APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: CubicTimer-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: CubicTimer-special-release-apk
+          path: app/build/outputs/apk/release/*.apk
