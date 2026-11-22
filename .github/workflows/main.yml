@@ -17,6 +17,7 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -24,7 +25,12 @@ jobs:
       - name: Build Debug APK
         run: |
           sed -i '/MaxPermSize/d' gradle.properties app/gradle.properties 2>/dev/null || true
-          ./gradlew assembleDebug
+          for i in 1 2 3; do
+            ./gradlew assembleDebug --no-daemon && exit 0
+            echo "Build attempt $i hit a snag, retrying in 15s..."
+            sleep 15
+          done
+          exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
