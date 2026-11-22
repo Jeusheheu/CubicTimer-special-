@@ -4,10 +4,12 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.provider.OpenableColumns;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -31,7 +33,10 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.webkit.MimeTypeMap;
 import android.widget.EditText;
+import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -45,12 +50,17 @@ import com.hatopigeon.cubictimer.utils.InsetsUtils;
 import com.hatopigeon.cubictimer.utils.LocaleUtils;
 import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.TimerFontUtils;
 import com.takisoft.preferencex.PreferenceFragmentCompat;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -129,6 +139,7 @@ public class SettingsActivity extends AppCompatActivity {
         private final int defaultPhaseNum = 4;
 
         private ActivityResultLauncher<Intent> openDocLauncher;
+        private ActivityResultLauncher<Intent> importFontLauncher;
         private boolean isBgImageSelectPortrait = true;
 
         private final androidx.preference.Preference.OnPreferenceClickListener clickListener
@@ -151,7 +162,15 @@ public class SettingsActivity extends AppCompatActivity {
                         R.string.pk_timer_animation_duration,
                         R.string.pk_bg_image_portrait,
                         R.string.pk_bg_image_landscape,
-                        R.string.pk_bg_image_opacity)) {
+                        R.string.pk_bg_image_opacity,
+                        R.string.pk_timer_font_import,
+                        R.string.pk_appearance_timer,
+                        R.string.pk_appearance_scramble,
+                        R.string.pk_appearance_ao5,
+                        R.string.pk_appearance_ao12,
+                        R.string.pk_appearance_ao100,
+                        R.string.pk_appearance_status,
+                        R.string.pk_appearance_laps)) {
 
                     case R.string.pk_inspection_time:
                         createNumberDialog(R.string.inspection_time, R.string.pk_inspection_time);
@@ -291,6 +310,30 @@ public class SettingsActivity extends AppCompatActivity {
                                 R.integer.defaultColorOverlayOpacity,
                                 "%d %%");
                         break;
+                    case R.string.pk_timer_font_import:
+                        launchFontPicker();
+                        break;
+                    case R.string.pk_appearance_timer:
+                        showComponentAppearanceDialog("timer", R.string.timer_appearance_timer);
+                        break;
+                    case R.string.pk_appearance_scramble:
+                        showComponentAppearanceDialog("scramble", R.string.timer_appearance_scramble);
+                        break;
+                    case R.string.pk_appearance_ao5:
+                        showComponentAppearanceDialog("ao5", R.string.timer_appearance_ao5);
+                        break;
+                    case R.string.pk_appearance_ao12:
+                        showComponentAppearanceDialog("ao12", R.string.timer_appearance_ao12);
+                        break;
+                    case R.string.pk_appearance_ao100:
+                        showComponentAppearanceDialog("ao100", R.string.timer_appearance_ao100);
+                        break;
+                    case R.string.pk_appearance_status:
+                        showComponentAppearanceDialog("status", R.string.timer_appearance_status);
+                        break;
+                    case R.string.pk_appearance_laps:
+                        showComponentAppearanceDialog("laps", R.string.timer_appearance_laps);
+                        break;
                 }
                 return false;
             }
@@ -317,6 +360,15 @@ public class SettingsActivity extends AppCompatActivity {
                         }
                     }
             );
+            importFontLauncher = registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null
+                                && result.getData().getData() != null) {
+                            importCustomFont(result.getData().getData());
+                        }
+                    }
+            );
         }
 
         @Override
@@ -337,7 +389,15 @@ public class SettingsActivity extends AppCompatActivity {
                     R.string.pk_timer_animation_duration,
                     R.string.pk_bg_image_portrait,
                     R.string.pk_bg_image_landscape,
-                    R.string.pk_bg_image_opacity};
+                    R.string.pk_bg_image_opacity,
+                    R.string.pk_timer_font_import,
+                    R.string.pk_appearance_timer,
+                    R.string.pk_appearance_scramble,
+                    R.string.pk_appearance_ao5,
+                    R.string.pk_appearance_ao12,
+                    R.string.pk_appearance_ao100,
+                    R.string.pk_appearance_status,
+                    R.string.pk_appearance_laps};
 
             for (int prefId : listenerPrefIds) {
                 Preference p = findPreference(getString(prefId));
@@ -662,6 +722,216 @@ public class SettingsActivity extends AppCompatActivity {
                         }
                     })
                     .build());
+        }
+
+        private void launchFontPicker() {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES,
+                    new String[]{"font/*", "application/font-sfnt", "font/ttf", "font/otf",
+                            "application/x-font-ttf", "application/x-font-otf",
+                            "application/x-font-opentype", "application/vnd.ms-opentype",
+                            "application/octet-stream"});
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            importFontLauncher.launch(intent);
+        }
+
+        private void importCustomFont(@NonNull Uri uri) {
+            String displayName = getDocumentName(uri);
+            String lowerName = displayName.toLowerCase(Locale.ROOT);
+            String extension = lowerName.endsWith(".ttf") ? ".ttf"
+                    : lowerName.endsWith(".otf") ? ".otf" : null;
+            if (extension == null) {
+                Toast.makeText(requireContext(), R.string.timer_font_import_failed,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            File fontDirectory = TimerFontUtils.getCustomFontDirectory(requireContext());
+            if (!fontDirectory.isDirectory() && !fontDirectory.mkdirs()) {
+                Log.e(TAG, "Could not create custom font directory: " + fontDirectory);
+                Toast.makeText(requireContext(), R.string.timer_font_import_failed,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            String fileName = UUID.randomUUID().toString() + extension;
+            File temporaryFile = new File(fontDirectory, fileName + ".tmp");
+            File fontFile = new File(fontDirectory, fileName);
+            try (InputStream input = requireContext().getContentResolver().openInputStream(uri);
+                 OutputStream output = new java.io.FileOutputStream(temporaryFile)) {
+                if (input == null) {
+                    throw new IOException("No data available for selected font");
+                }
+                byte[] buffer = new byte[32 * 1024];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                }
+                output.flush();
+                Typeface.createFromFile(temporaryFile.getAbsolutePath());
+                if (!temporaryFile.renameTo(fontFile)) {
+                    throw new IOException("Could not save imported font");
+                }
+                Prefs.getPrefs().edit()
+                        .putString(TimerFontUtils.getDisplayNamePreferenceKey(fileName), displayName)
+                        .apply();
+                Toast.makeText(requireContext(), R.string.timer_font_import_success,
+                        Toast.LENGTH_SHORT).show();
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "Could not import custom font " + displayName, e);
+                if (temporaryFile.exists() && !temporaryFile.delete()) {
+                    Log.w(TAG, "Could not remove invalid temporary font file " + temporaryFile);
+                }
+                Toast.makeText(requireContext(), R.string.timer_font_import_failed,
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+
+        @NonNull
+        private String getDocumentName(@NonNull Uri uri) {
+            try (Cursor cursor = requireContext().getContentResolver().query(
+                    uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (column >= 0) {
+                        String name = cursor.getString(column);
+                        if (name != null && !name.trim().isEmpty()) {
+                            return new File(name).getName();
+                        }
+                    }
+                }
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Could not read the selected font's display name", e);
+            }
+            String lastSegment = uri.getLastPathSegment();
+            return lastSegment == null ? "" : lastSegment;
+        }
+
+        private void showComponentAppearanceDialog(@NonNull String component, int titleRes) {
+            Context context = requireContext();
+            String prefsPrefix = "timerAppearance_" + component + "_";
+            List<String> fontValues = new ArrayList<>();
+            List<String> fontLabels = new ArrayList<>();
+            addFontChoice(fontValues, fontLabels, "default", R.string.timer_appearance_default_font);
+            addFontChoice(fontValues, fontLabels, "lato", R.string.timer_font_lato);
+            addFontChoice(fontValues, fontLabels, "quicksand", R.string.timer_font_quicksand);
+            addFontChoice(fontValues, fontLabels, "sans_serif", R.string.timer_font_sans_serif);
+            addFontChoice(fontValues, fontLabels, "monospace", R.string.timer_font_monospace);
+
+            File fontDirectory = TimerFontUtils.getCustomFontDirectory(context);
+            File[] importedFonts = fontDirectory.listFiles((directory, name) ->
+                    name.toLowerCase(Locale.ROOT).endsWith(".ttf")
+                            || name.toLowerCase(Locale.ROOT).endsWith(".otf"));
+            if (importedFonts != null) {
+                java.util.Arrays.sort(importedFonts, (left, right) ->
+                        left.getName().compareToIgnoreCase(right.getName()));
+                for (File font : importedFonts) {
+                    fontValues.add(TimerFontUtils.getCustomFontId(font.getName()));
+                    fontLabels.add(Prefs.getPrefs().getString(
+                            TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
+                }
+            }
+
+            LinearLayout panel = new LinearLayout(context);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            int horizontalPadding = ThemeUtils.dpToPix(context, 24);
+            panel.setPadding(horizontalPadding, 0, horizontalPadding, 0);
+
+            TextView fontLabel = new TextView(context);
+            fontLabel.setText(R.string.timer_appearance_font);
+            panel.addView(fontLabel);
+
+            Spinner fontSpinner = new Spinner(context);
+            ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(context,
+                    android.R.layout.simple_spinner_item, fontLabels);
+            fontAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            fontSpinner.setAdapter(fontAdapter);
+            String selectedFont = Prefs.getPrefs().getString(prefsPrefix + "font", "default");
+            int selectedFontIndex = fontValues.indexOf(selectedFont);
+            fontSpinner.setSelection(Math.max(0, selectedFontIndex));
+            panel.addView(fontSpinner);
+
+            TextView sizeLabel = new TextView(context);
+            int size = Prefs.getPrefs().getInt(prefsPrefix + "size", 100);
+            sizeLabel.setText(getString(R.string.timer_appearance_size, size));
+            panel.addView(sizeLabel);
+
+            SeekBar sizeSeekBar = new SeekBar(context);
+            sizeSeekBar.setMax(150);
+            sizeSeekBar.setProgress(Math.max(0, Math.min(150, size - 50)));
+            sizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    sizeLabel.setText(getString(R.string.timer_appearance_size, progress + 50));
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                }
+            });
+            panel.addView(sizeSeekBar);
+
+            CheckBox boldCheckBox = new CheckBox(context);
+            boldCheckBox.setText(R.string.timer_appearance_bold);
+            boolean defaultBold = "timer".equals(component) || "laps".equals(component)
+                    || "status".equals(component);
+            boldCheckBox.setChecked(Prefs.getPrefs().getBoolean(prefsPrefix + "bold", defaultBold));
+            panel.addView(boldCheckBox);
+
+            CheckBox italicCheckBox = new CheckBox(context);
+            italicCheckBox.setText(R.string.timer_appearance_italic);
+            italicCheckBox.setChecked(Prefs.getPrefs().getBoolean(prefsPrefix + "italic", false));
+            panel.addView(italicCheckBox);
+
+            TextView colorLabel = new TextView(context);
+            colorLabel.setText(R.string.timer_appearance_color);
+            panel.addView(colorLabel);
+            String[] colorValues = {"theme", "accent", "white", "black"};
+            String[] colorLabels = {
+                    getString(R.string.timer_appearance_color_theme),
+                    getString(R.string.timer_appearance_color_accent),
+                    getString(R.string.timer_appearance_color_white),
+                    getString(R.string.timer_appearance_color_black)
+            };
+            Spinner colorSpinner = new Spinner(context);
+            ArrayAdapter<String> colorAdapter = new ArrayAdapter<>(context,
+                    android.R.layout.simple_spinner_item, colorLabels);
+            colorAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            colorSpinner.setAdapter(colorAdapter);
+            String color = Prefs.getPrefs().getString(prefsPrefix + "color", "theme");
+            int selectedColorIndex = java.util.Arrays.asList(colorValues).indexOf(color);
+            colorSpinner.setSelection(Math.max(0, selectedColorIndex));
+            panel.addView(colorSpinner);
+
+            MaterialDialog dialog = ThemeUtils.roundDialog(context, new MaterialDialog.Builder(context)
+                    .title(getString(R.string.timer_appearance_dialog_title, getString(titleRes)))
+                    .customView(panel, true)
+                    .positiveText(R.string.action_done)
+                    .negativeText(R.string.action_cancel)
+                    .onPositive((materialDialog, which) -> {
+                        int fontIndex = fontSpinner.getSelectedItemPosition();
+                        Prefs.getPrefs().edit()
+                                .putString(prefsPrefix + "font", fontValues.get(fontIndex))
+                                .putInt(prefsPrefix + "size", sizeSeekBar.getProgress() + 50)
+                                .putBoolean(prefsPrefix + "bold", boldCheckBox.isChecked())
+                                .putBoolean(prefsPrefix + "italic", italicCheckBox.isChecked())
+                                .putString(prefsPrefix + "color",
+                                        colorValues[colorSpinner.getSelectedItemPosition()])
+                                .apply();
+                    })
+                    .build());
+            dialog.show();
+        }
+
+        private void addFontChoice(List<String> values, List<String> labels, String value, int labelRes) {
+            values.add(value);
+            labels.add(getString(labelRes));
         }
 
         private void createImagePickerDialog(boolean isPortrait) {

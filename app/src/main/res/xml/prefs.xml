@@ -307,6 +307,52 @@
 
             <Preference android:layout="@layout/divider_preference_category" />
 
+            <PreferenceCategory android:title="@string/timer_appearance_category">
+
+                <Preference
+                    android:key="@string/pk_timer_font_import"
+                    android:summary="@string/timer_font_import_summary"
+                    android:title="@string/timer_font_import_title" />
+
+                <Preference
+                    android:key="@string/pk_appearance_timer"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_timer" />
+
+                <Preference
+                    android:key="@string/pk_appearance_scramble"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_scramble" />
+
+                <Preference
+                    android:key="@string/pk_appearance_ao5"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_ao5" />
+
+                <Preference
+                    android:key="@string/pk_appearance_ao12"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_ao12" />
+
+                <Preference
+                    android:key="@string/pk_appearance_ao100"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_ao100" />
+
+                <Preference
+                    android:key="@string/pk_appearance_status"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_status" />
+
+                <Preference
+                    android:key="@string/pk_appearance_laps"
+                    android:summary="@string/timer_appearance_summary"
+                    android:title="@string/timer_appearance_laps" />
+
+            </PreferenceCategory>
+
+            <Preference android:layout="@layout/divider_preference_category" />
+
             <PreferenceCategory android:title="@string/pref_category_title_advanced">
 
                 <SwitchPreferenceCompat

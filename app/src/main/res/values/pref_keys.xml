@@ -104,6 +104,14 @@ THESE KEYS MUST NOT BE LOCALIZED!
     <string translatable="false" name="pk_timer_text_size">timerTextSize</string>
     <string translatable="false" name="pk_timer_text_offset">timerTextOffset</string>
     <string translatable="false" name="pk_timer_font">timerFont</string>
+    <string translatable="false" name="pk_timer_font_import">timerFontImport</string>
+    <string translatable="false" name="pk_appearance_timer">timerAppearanceTimer</string>
+    <string translatable="false" name="pk_appearance_scramble">timerAppearanceScramble</string>
+    <string translatable="false" name="pk_appearance_ao5">timerAppearanceAo5</string>
+    <string translatable="false" name="pk_appearance_ao12">timerAppearanceAo12</string>
+    <string translatable="false" name="pk_appearance_ao100">timerAppearanceAo100</string>
+    <string translatable="false" name="pk_appearance_status">timerAppearanceStatus</string>
+    <string translatable="false" name="pk_appearance_laps">timerAppearanceLaps</string>
     <string translatable="false" name="pk_advanced_timer_settings_enabled">enableAdvanced</string>
 
 

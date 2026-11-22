@@ -48,6 +48,12 @@ import androidx.appcompat.widget.AppCompatTextView;
 import androidx.cardview.widget.CardView;
 
 import android.text.Html;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.TextPaint;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.MetricAffectingSpan;
+import android.text.style.RelativeSizeSpan;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
@@ -91,6 +97,7 @@ import com.hatopigeon.cubictimer.utils.PuzzleUtils;
 import com.hatopigeon.cubictimer.utils.ScrambleGenerator;
 import com.hatopigeon.cubictimer.utils.TTIntent;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.TimerFontUtils;
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
@@ -98,6 +105,7 @@ import com.hoho.android.usbserial.util.SerialInputOutputManager;
 import com.skyfishjy.library.RippleBackground;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -105,9 +113,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import androidx.core.app.ActivityCompat;
@@ -446,7 +458,12 @@ public class TimerFragment extends BaseFragment
     private boolean timeLimitAlertEnabled;
     private boolean timeLimitVibrationAlertEnabled;
     private boolean timeLimitSoundAlertEnabled;
+    private float timerTextSizeScale = 1f;
+    private boolean advancedTimerSettingsEnabled;
     float scrambleTextSize;
+    private final Map<TextView, Float> componentBaseTextSizes = new IdentityHashMap<>();
+    private final Map<TextView, Typeface> componentBaseTypefaces = new IdentityHashMap<>();
+    private final Set<String> reportedMissingFonts = new HashSet<>();
 
     // multi phase
     private boolean mShowHiRes;
@@ -718,8 +735,28 @@ public class TimerFragment extends BaseFragment
         // Inflate the layout for this fragment
         View root = inflater.inflate(R.layout.fragment_timer, container, false);
         mUnbinder = ButterKnife.bind(this, root);
+        componentBaseTextSizes.clear();
+        componentBaseTypefaces.clear();
+        captureBaseTextSize(chronometer);
+        captureBaseTextSize(scrambleText);
+        captureBaseTextSize(detailTextAvg);
+        captureBaseTextSize(detailTextOther);
+        captureBaseTextSize(recentResultText);
+        captureBaseTextSize(lapTimeText);
+        captureBaseTextSize(inspectionText);
+        captureBaseTextSize(multiPhaseStatusMessage);
+        captureBaseTextSize(bleStatusMessage);
+        captureBaseTextSize(serialStatusMessage);
+        captureBaseTextSize(congratsText);
 
         return root;
+    }
+
+    private void captureBaseTextSize(@Nullable TextView textView) {
+        if (textView != null) {
+            componentBaseTextSizes.put(textView, textView.getTextSize());
+            componentBaseTypefaces.put(textView, textView.getTypeface());
+        }
     }
 
     @SuppressLint({"ClickableViewAccessibility", "RestrictedApi"})
@@ -754,6 +791,8 @@ public class TimerFragment extends BaseFragment
         scrambleTextSize = Prefs.getInt(R.string.pk_scramble_text_size, 100) / 100f;
         final boolean advancedEnabled
                 = Prefs.getBoolean(R.string.pk_advanced_timer_settings_enabled, false);
+        timerTextSizeScale = timerTextSize;
+        advancedTimerSettingsEnabled = advancedEnabled;
 
         /*
          *  Scramble text size preference. It doesn't need to be in the "advanced" settings since
@@ -1246,34 +1285,196 @@ public class TimerFragment extends BaseFragment
     }
 
     private void applyTimerFont() {
-        if (chronometer == null || lapTimeText == null) {
+        if (chronometer == null || scrambleText == null || lapTimeText == null) {
             return;
         }
 
-        Typeface typeface;
-        String font = Prefs.getString(R.string.pk_timer_font, "lato");
-        switch (font) {
-            case "quicksand":
-                typeface = Typeface.createFromAsset(
-                        requireContext().getAssets(), "fonts/Quicksand_Bold.ttf");
-                break;
-            case "sans_serif":
-                typeface = Typeface.create("sans-serif", Typeface.BOLD);
-                break;
-            case "monospace":
-                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD);
-                break;
-            case "lato":
-            default:
-                typeface = ResourcesCompat.getFont(requireContext(), R.font.lato_bold);
-                if (typeface == null) {
-                    throw new IllegalStateException("Lato timer font could not be loaded");
-                }
-                break;
+        applyComponentAppearance(chronometer, "timer", "timer");
+        applyComponentAppearance(scrambleText, "scramble", "scramble");
+        applyComponentAppearance(lapTimeText, "laps", "laps");
+        applyComponentAppearance(inspectionText, "status", "status");
+        applyComponentAppearance(multiPhaseStatusMessage, "status", "status");
+        applyComponentAppearance(bleStatusMessage, "status", "status");
+        applyComponentAppearance(serialStatusMessage, "status", "status");
+        applyAverageAppearances();
+    }
+
+    private void applyComponentAppearance(@Nullable TextView view, @NonNull String component,
+                                          @NonNull String fallbackComponent) {
+        if (view == null) {
+            return;
+        }
+        String prefix = "timerAppearance_" + component + "_";
+        String fontId = Prefs.getPrefs().getString(prefix + "font", "default");
+        Typeface fallback = componentBaseTypefaces.containsKey(view)
+                ? componentBaseTypefaces.get(view) : view.getTypeface();
+        Typeface typeface = resolveTypeface(fontId, fallbackComponent, fallback);
+        boolean hasBold = Prefs.getPrefs().contains(prefix + "bold");
+        boolean hasItalic = Prefs.getPrefs().contains(prefix + "italic");
+        if (hasBold || hasItalic) {
+            int style = (Prefs.getPrefs().getBoolean(prefix + "bold", false) ? Typeface.BOLD : 0)
+                    | (Prefs.getPrefs().getBoolean(prefix + "italic", false) ? Typeface.ITALIC : 0);
+            typeface = Typeface.create(typeface, style);
+        }
+        view.setTypeface(typeface);
+
+        float baseSize = componentBaseTextSizes.containsKey(view)
+                ? componentBaseTextSizes.get(view) : view.getTextSize();
+        if ("scramble".equals(component)) {
+            baseSize *= scrambleTextSize;
+        }
+        int sizePercent = Prefs.getPrefs().getInt(prefix + "size", 100);
+        if (view == chronometer) {
+            float scale = sizePercent / 100f;
+            int minSize = advancedTimerSettingsEnabled
+                    ? (int) (45 * timerTextSizeScale * scale) : (int) (12 * scale);
+            int maxSize = (int) (90 * (advancedTimerSettingsEnabled ? timerTextSizeScale : 1f) * scale);
+            chronometer.setAutoSizeTextTypeUniformWithConfiguration(
+                    Math.max(1, minSize), Math.max(minSize + 1, maxSize), 2,
+                    TypedValue.COMPLEX_UNIT_SP);
+        } else {
+            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, baseSize * sizePercent / 100f);
+        }
+        if (Prefs.getPrefs().contains(prefix + "color")) {
+            view.setTextColor(resolveAppearanceColor(
+                    Prefs.getPrefs().getString(prefix + "color", "theme"), component));
+        }
+    }
+
+    private Typeface resolveTypeface(@NonNull String fontId, @NonNull String fallbackComponent,
+                                     @NonNull Typeface fallback) {
+        String selectedFont = fontId;
+        if ("default".equals(fontId)) {
+            if ("timer".equals(fallbackComponent) || "laps".equals(fallbackComponent)) {
+                selectedFont = Prefs.getString(R.string.pk_timer_font, "lato");
+            } else {
+                return fallback;
+            }
         }
 
-        chronometer.setTypeface(typeface);
-        lapTimeText.setTypeface(typeface);
+        switch (selectedFont) {
+            case "quicksand":
+                return Typeface.createFromAsset(
+                        requireContext().getAssets(), "fonts/Quicksand_Bold.ttf");
+            case "sans_serif":
+                return Typeface.create("sans-serif", Typeface.BOLD);
+            case "monospace":
+                return Typeface.create(Typeface.MONOSPACE, Typeface.BOLD);
+            case "lato":
+                Typeface lato = ResourcesCompat.getFont(requireContext(), R.font.lato_bold);
+                if (lato == null) {
+                    throw new IllegalStateException("Lato timer font could not be loaded");
+                }
+                return lato;
+            default:
+                if (selectedFont.startsWith(TimerFontUtils.CUSTOM_FONT_ID_PREFIX)) {
+                    String fileName = selectedFont.substring(TimerFontUtils.CUSTOM_FONT_ID_PREFIX.length());
+                    File file = new File(TimerFontUtils.getCustomFontDirectory(requireContext()), fileName);
+                    if (file.isFile()) {
+                        try {
+                            return Typeface.createFromFile(file.getAbsolutePath());
+                        } catch (RuntimeException e) {
+                            reportUnavailableFont(selectedFont, "Could not load imported font " + fileName, e);
+                            return fallback;
+                        }
+                    }
+                    reportUnavailableFont(selectedFont, "Imported font is missing: " + fileName, null);
+                }
+                return fallback;
+        }
+    }
+
+    private void reportUnavailableFont(@NonNull String fontId, @NonNull String message,
+                                       @Nullable Throwable error) {
+        if (!reportedMissingFonts.add(fontId)) {
+            return;
+        }
+        Log.e(TAG, message, error);
+        if (isAdded()) {
+            Toast.makeText(requireContext(), R.string.timer_font_import_failed, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private int resolveAppearanceColor(@NonNull String color, @NonNull String component) {
+        switch (color) {
+            case "accent":
+                return ThemeUtils.fetchAttrColor(mContext, R.attr.colorAccent);
+            case "white":
+                return Color.WHITE;
+            case "black":
+                return Color.BLACK;
+            case "theme":
+            default:
+                if ("scramble".equals(component) && scrambleBackgroundEnabled) {
+                    return ThemeUtils.fetchAttrColor(mContext, R.attr.colorItemListText);
+                }
+                return ThemeUtils.fetchAttrColor(mContext, R.attr.colorTimerText);
+        }
+    }
+
+    private void applyAverageAppearances() {
+        if (detailTextAvg == null || detailTextAvg.getText() == null) {
+            return;
+        }
+        SpannableString styledText = new SpannableString(detailTextAvg.getText());
+        applyAverageAppearance(styledText, "ao5", detailTextNamesArray[1] + "5:");
+        applyAverageAppearance(styledText, "ao12", detailTextNamesArray[2] + "12:");
+        applyAverageAppearance(styledText, "ao100", detailTextNamesArray[4] + "100:");
+        detailTextAvg.setText(styledText);
+    }
+
+    private void applyAverageAppearance(@NonNull SpannableString text, @NonNull String component,
+                                        @NonNull String label) {
+        String content = text.toString();
+        int start = content.indexOf(label);
+        if (start < 0) {
+            return;
+        }
+        int end = content.indexOf('\n', start);
+        if (end < 0) {
+            end = content.length();
+        }
+        String prefix = "timerAppearance_" + component + "_";
+        Typeface typeface = resolveTypeface(
+                Prefs.getPrefs().getString(prefix + "font", "default"),
+                component, componentBaseTypefaces.containsKey(detailTextAvg)
+                        ? componentBaseTypefaces.get(detailTextAvg) : detailTextAvg.getTypeface());
+        boolean hasBold = Prefs.getPrefs().contains(prefix + "bold");
+        boolean hasItalic = Prefs.getPrefs().contains(prefix + "italic");
+        if (hasBold || hasItalic) {
+            int style = (Prefs.getPrefs().getBoolean(prefix + "bold", false) ? Typeface.BOLD : 0)
+                    | (Prefs.getPrefs().getBoolean(prefix + "italic", false) ? Typeface.ITALIC : 0);
+            typeface = Typeface.create(typeface, style);
+        }
+        text.setSpan(new ComponentTypefaceSpan(typeface), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        int size = Prefs.getPrefs().getInt(prefix + "size", 100);
+        if (size != 100) {
+            text.setSpan(new RelativeSizeSpan(size / 100f), start, end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (Prefs.getPrefs().contains(prefix + "color")) {
+            text.setSpan(new ForegroundColorSpan(resolveAppearanceColor(
+                            Prefs.getPrefs().getString(prefix + "color", "theme"), component)),
+                    start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    private static class ComponentTypefaceSpan extends MetricAffectingSpan {
+        private final Typeface typeface;
+
+        ComponentTypefaceSpan(@NonNull Typeface typeface) {
+            this.typeface = typeface;
+        }
+
+        @Override
+        public void updateMeasureState(@NonNull TextPaint paint) {
+            paint.setTypeface(typeface);
+        }
+
+        @Override
+        public void updateDrawState(@NonNull TextPaint paint) {
+            paint.setTypeface(typeface);
+        }
     }
 
     private void initializeTimerLayoutItems() {
@@ -2128,6 +2329,7 @@ public class TimerFragment extends BaseFragment
             } else {
                 detailTextAvg.setText(Html.fromHtml(stringDetailAvg.toString()));
             }
+            applyAverageAppearances();
         }
 
         if (recentResultsEnabled) {
