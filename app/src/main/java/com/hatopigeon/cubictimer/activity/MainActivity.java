@@ -644,7 +644,9 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     protected void attachBaseContext(Context newBase) {
-        super.attachBaseContext(LocaleUtils.updateLocale(newBase));
+        Context localizedContext = LocaleUtils.updateLocale(newBase);
+        UiFontUtils.preloadSelectedTypeface(localizedContext);
+        super.attachBaseContext(localizedContext);
     }
 
     @Override

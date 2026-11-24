@@ -106,6 +106,10 @@ THESE KEYS MUST NOT BE LOCALIZED!
     <string translatable="false" name="pk_timer_font">timerFont</string>
     <string translatable="false" name="pk_app_ui_font">appUiFont</string>
     <string translatable="false" name="pk_timer_font_import">timerFontImport</string>
+    <string translatable="false" name="pk_timer_layout_preset_load">timerLayoutPresetLoad</string>
+    <string translatable="false" name="pk_timer_layout_preset_save">timerLayoutPresetSave</string>
+    <string translatable="false" name="pk_timer_layout_preset_export">timerLayoutPresetExport</string>
+    <string translatable="false" name="pk_timer_layout_preset_import">timerLayoutPresetImport</string>
     <string translatable="false" name="pk_appearance_timer">timerAppearanceTimer</string>
     <string translatable="false" name="pk_appearance_scramble">timerAppearanceScramble</string>
     <string translatable="false" name="pk_appearance_ao5">timerAppearanceAo5</string>

@@ -98,6 +98,7 @@ import com.hatopigeon.cubictimer.utils.ScrambleGenerator;
 import com.hatopigeon.cubictimer.utils.TTIntent;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
 import com.hatopigeon.cubictimer.utils.TimerFontUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
@@ -285,9 +286,7 @@ public class TimerFragment extends BaseFragment
     // multi phase support
     private int totalPhase;
 
-    // Holds the localized strings related to each detail statistic, in order:
-    // Ao5, Ao12, Ao50, Ao100, Deviation, Mean, Best, Count
-    private String detailTextNamesArray[] = new String[8];
+    private String[] detailTextNamesArray = new String[10];
 
     // Stack Timer support
     private static final String INTENT_ACTION_GRANT_USB = BuildConfig.APPLICATION_ID + ".GRANT_USB";
@@ -340,7 +339,7 @@ public class TimerFragment extends BaseFragment
     TextView detailTextOther;
 
     @BindView(R.id.detail_average_record_message)
-    View detailAverageRecordMesssage;
+    TextView detailAverageRecordMesssage;
 
     @BindView(R.id.sessionRecentResultText)
     TextView recentResultText;
@@ -447,6 +446,7 @@ public class TimerFragment extends BaseFragment
     private CheckBox timerLayoutVisibleCheckbox;
     private SeekBar timerLayoutSizeSeekBar;
     private TextView timerLayoutSizeText;
+    private TextView timerLayoutAppearanceButton;
     private ScaleGestureDetector timerLayoutScaleDetector;
     private ViewTreeObserver.OnGlobalLayoutListener timerLayoutVisibilityListener;
     private boolean isEditingTimerLayout;
@@ -741,6 +741,7 @@ public class TimerFragment extends BaseFragment
         captureBaseTextSize(scrambleText);
         captureBaseTextSize(detailTextAvg);
         captureBaseTextSize(detailTextOther);
+        captureBaseTextSize(detailAverageRecordMesssage);
         captureBaseTextSize(recentResultText);
         captureBaseTextSize(lapTimeText);
         captureBaseTextSize(inspectionText);
@@ -1272,7 +1273,12 @@ public class TimerFragment extends BaseFragment
     public void onResume() {
         if (DEBUG_ME) Log.d(TAG, "onResume()");
         super.onResume();
+        timerTextSizeScale = Prefs.getInt(R.string.pk_timer_text_size, 100) / 100f;
+        scrambleTextSize = Prefs.getInt(R.string.pk_scramble_text_size, 100) / 100f;
         applyTimerFont();
+        if (rootLayout != null && !isEditingTimerLayout) {
+            rootLayout.post(this::reloadSavedTimerLayout);
+        }
         if (scrambleEnabled) {
             if (realScramble == null) {
                 generateNewScramble();
@@ -1292,11 +1298,15 @@ public class TimerFragment extends BaseFragment
         applyComponentAppearance(chronometer, "timer", "timer");
         applyComponentAppearance(scrambleText, "scramble", "scramble");
         applyComponentAppearance(lapTimeText, "laps", "laps");
-        applyComponentAppearance(inspectionText, "status", "status");
-        applyComponentAppearance(multiPhaseStatusMessage, "status", "status");
-        applyComponentAppearance(bleStatusMessage, "status", "status");
-        applyComponentAppearance(serialStatusMessage, "status", "status");
+        applyComponentAppearance(inspectionText, "inspection", "status");
+        applyComponentAppearance(recentResultText, "recentResults", "recentResults");
+        applyComponentAppearance(detailAverageRecordMesssage, "averageRecord", "averageRecord");
+        applyComponentAppearance(multiPhaseStatusMessage, "multiPhaseStatus", "status");
+        applyComponentAppearance(bleStatusMessage, "bluetoothStatus", "status");
+        applyComponentAppearance(serialStatusMessage, "serialStatus", "status");
+        applyComponentAppearance(congratsText, "personalRecord", "personalRecord");
         applyAverageAppearances();
+        applySessionDetailAppearances();
     }
 
     private void applyComponentAppearance(@Nullable TextView view, @NonNull String component,
@@ -1304,16 +1314,19 @@ public class TimerFragment extends BaseFragment
         if (view == null) {
             return;
         }
-        String prefix = "timerAppearance_" + component + "_";
-        String fontId = Prefs.getPrefs().getString(prefix + "font", "default");
+        String prefix = appearancePrefix(component);
+        String legacyPrefix = appearancePrefix(fallbackComponent);
+        String fontId = getAppearanceString(prefix, legacyPrefix, "font", "default");
         Typeface fallback = componentBaseTypefaces.containsKey(view)
                 ? componentBaseTypefaces.get(view) : view.getTypeface();
         Typeface typeface = resolveTypeface(fontId, fallbackComponent, fallback);
-        boolean hasBold = Prefs.getPrefs().contains(prefix + "bold");
-        boolean hasItalic = Prefs.getPrefs().contains(prefix + "italic");
+        boolean hasBold = hasAppearanceValue(prefix, legacyPrefix, "bold");
+        boolean hasItalic = hasAppearanceValue(prefix, legacyPrefix, "italic");
         if (hasBold || hasItalic) {
-            int style = (Prefs.getPrefs().getBoolean(prefix + "bold", false) ? Typeface.BOLD : 0)
-                    | (Prefs.getPrefs().getBoolean(prefix + "italic", false) ? Typeface.ITALIC : 0);
+            int style = (getAppearanceBoolean(prefix, legacyPrefix, "bold", false)
+                    ? Typeface.BOLD : 0)
+                    | (getAppearanceBoolean(prefix, legacyPrefix, "italic", false)
+                    ? Typeface.ITALIC : 0);
             typeface = Typeface.create(typeface, style);
         }
         view.setTypeface(typeface);
@@ -1323,7 +1336,7 @@ public class TimerFragment extends BaseFragment
         if ("scramble".equals(component)) {
             baseSize *= scrambleTextSize;
         }
-        int sizePercent = Prefs.getPrefs().getInt(prefix + "size", 100);
+        int sizePercent = getAppearanceInt(prefix, legacyPrefix, "size", 100);
         if (view == chronometer) {
             float scale = sizePercent / 100f;
             int minSize = advancedTimerSettingsEnabled
@@ -1335,10 +1348,46 @@ public class TimerFragment extends BaseFragment
         } else {
             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, baseSize * sizePercent / 100f);
         }
-        if (Prefs.getPrefs().contains(prefix + "color")) {
+        if (hasAppearanceValue(prefix, legacyPrefix, "color")) {
             view.setTextColor(resolveAppearanceColor(
-                    Prefs.getPrefs().getString(prefix + "color", "theme"), component));
+                    getAppearanceString(prefix, legacyPrefix, "color", "theme"), component));
         }
+    }
+
+    private String appearancePrefix(@NonNull String component) {
+        return "timerAppearance_" + component + "_";
+    }
+
+    private boolean hasAppearanceValue(@NonNull String prefix, @NonNull String fallbackPrefix,
+                                       @NonNull String property) {
+        return Prefs.getPrefs().contains(prefix + property)
+                || !prefix.equals(fallbackPrefix)
+                && Prefs.getPrefs().contains(fallbackPrefix + property);
+    }
+
+    @NonNull
+    private String getAppearanceString(@NonNull String prefix, @NonNull String fallbackPrefix,
+                                       @NonNull String property, @NonNull String defaultValue) {
+        if (Prefs.getPrefs().contains(prefix + property)) {
+            return Prefs.getPrefs().getString(prefix + property, defaultValue);
+        }
+        return Prefs.getPrefs().getString(fallbackPrefix + property, defaultValue);
+    }
+
+    private boolean getAppearanceBoolean(@NonNull String prefix, @NonNull String fallbackPrefix,
+                                         @NonNull String property, boolean defaultValue) {
+        if (Prefs.getPrefs().contains(prefix + property)) {
+            return Prefs.getPrefs().getBoolean(prefix + property, defaultValue);
+        }
+        return Prefs.getPrefs().getBoolean(fallbackPrefix + property, defaultValue);
+    }
+
+    private int getAppearanceInt(@NonNull String prefix, @NonNull String fallbackPrefix,
+                                 @NonNull String property, int defaultValue) {
+        if (Prefs.getPrefs().contains(prefix + property)) {
+            return Prefs.getPrefs().getInt(prefix + property, defaultValue);
+        }
+        return Prefs.getPrefs().getInt(fallbackPrefix + property, defaultValue);
     }
 
     private Typeface resolveTypeface(@NonNull String fontId, @NonNull String fallbackComponent,
@@ -1417,14 +1466,59 @@ public class TimerFragment extends BaseFragment
             return;
         }
         SpannableString styledText = new SpannableString(detailTextAvg.getText());
-        applyAverageAppearance(styledText, "ao5", detailTextNamesArray[1] + "5:");
-        applyAverageAppearance(styledText, "ao12", detailTextNamesArray[2] + "12:");
-        applyAverageAppearance(styledText, "ao100", detailTextNamesArray[4] + "100:");
+        clearComponentAppearanceSpans(styledText);
+        String[] averageNumbers = {"3", "5", "12", "50", "100", "1000"};
+        for (int i = 0; i < averageNumbers.length; i++) {
+            String prefix = appearancePrefix("ao" + averageNumbers[i]);
+            if (hasAppearanceValue(prefix, prefix, "font")
+                    || hasAppearanceValue(prefix, prefix, "size")
+                    || hasAppearanceValue(prefix, prefix, "bold")
+                    || hasAppearanceValue(prefix, prefix, "italic")
+                    || hasAppearanceValue(prefix, prefix, "color")) {
+                applyTextAppearanceSpan(styledText, "ao" + averageNumbers[i],
+                        detailTextNamesArray[i] + averageNumbers[i] + ":", detailTextAvg);
+            }
+        }
         detailTextAvg.setText(styledText);
     }
 
-    private void applyAverageAppearance(@NonNull SpannableString text, @NonNull String component,
-                                        @NonNull String label) {
+    private void applySessionDetailAppearances() {
+        if (detailTextOther == null || detailTextOther.getText() == null) {
+            return;
+        }
+        SpannableString styledText = new SpannableString(detailTextOther.getText());
+        clearComponentAppearanceSpans(styledText);
+        String[] components = {"deviation", "mean", "best", "count"};
+        for (int i = 0; i < components.length; i++) {
+            String prefix = appearancePrefix(components[i]);
+            if (hasAppearanceValue(prefix, prefix, "font")
+                    || hasAppearanceValue(prefix, prefix, "size")
+                    || hasAppearanceValue(prefix, prefix, "bold")
+                    || hasAppearanceValue(prefix, prefix, "italic")
+                    || hasAppearanceValue(prefix, prefix, "color")) {
+                applyTextAppearanceSpan(styledText, components[i],
+                        detailTextNamesArray[i + 6] + ":", detailTextOther);
+            }
+        }
+        detailTextOther.setText(styledText);
+    }
+
+    private void clearComponentAppearanceSpans(@NonNull SpannableString text) {
+        for (ComponentTypefaceSpan span : text.getSpans(
+                0, text.length(), ComponentTypefaceSpan.class)) {
+            text.removeSpan(span);
+        }
+        for (RelativeSizeSpan span : text.getSpans(0, text.length(), RelativeSizeSpan.class)) {
+            text.removeSpan(span);
+        }
+        for (ForegroundColorSpan span : text.getSpans(
+                0, text.length(), ForegroundColorSpan.class)) {
+            text.removeSpan(span);
+        }
+    }
+
+    private void applyTextAppearanceSpan(@NonNull SpannableString text, @NonNull String component,
+                                         @NonNull String label, @NonNull TextView baseView) {
         String content = text.toString();
         int start = content.indexOf(label);
         if (start < 0) {
@@ -1434,11 +1528,10 @@ public class TimerFragment extends BaseFragment
         if (end < 0) {
             end = content.length();
         }
-        String prefix = "timerAppearance_" + component + "_";
+        String prefix = appearancePrefix(component);
+        Typeface fallback = baseView.getTypeface();
         Typeface typeface = resolveTypeface(
-                Prefs.getPrefs().getString(prefix + "font", "default"),
-                component, componentBaseTypefaces.containsKey(detailTextAvg)
-                        ? componentBaseTypefaces.get(detailTextAvg) : detailTextAvg.getTypeface());
+                Prefs.getPrefs().getString(prefix + "font", "default"), component, fallback);
         boolean hasBold = Prefs.getPrefs().contains(prefix + "bold");
         boolean hasItalic = Prefs.getPrefs().contains(prefix + "italic");
         if (hasBold || hasItalic) {
@@ -1478,21 +1571,35 @@ public class TimerFragment extends BaseFragment
     }
 
     private void initializeTimerLayoutItems() {
-        addTimerLayoutItem(R.id.scramble_box, R.string.timer_layout_scramble);
-        addTimerLayoutItem(R.id.chronometer, R.string.timer_layout_timer);
-        addTimerLayoutItem(R.id.lapTimeText, R.string.timer_layout_lap_times);
-        addTimerLayoutItem(R.id.inspection_text, R.string.timer_layout_inspection);
+        addTimerLayoutItem(R.id.scramble_box, R.string.timer_layout_scramble,
+                "scramble", R.string.timer_layout_scramble);
+        addTimerLayoutItem(R.id.chronometer, R.string.timer_layout_timer,
+                "timer", R.string.timer_layout_timer);
+        addTimerLayoutItem(R.id.lapTimeText, R.string.timer_layout_lap_times,
+                "laps", R.string.timer_layout_lap_times);
+        addTimerLayoutItem(R.id.inspection_text, R.string.timer_layout_inspection,
+                "inspection", R.string.timer_layout_inspection);
         addTimerLayoutItem(R.id.qa_layout, R.string.timer_layout_quick_actions);
         addTimerLayoutItem(R.id.qa_undo, R.string.timer_layout_undo);
         addTimerLayoutItem(R.id.scramble_img, R.string.timer_layout_scramble_image);
-        addTimerLayoutItem(R.id.sessionRecentResultText, R.string.timer_layout_recent_results);
-        addTimerLayoutItem(R.id.detail_average_record_message, R.string.timer_layout_average_record);
-        addTimerLayoutItem(R.id.sessionDetailTextAverage, R.string.timer_layout_session_averages);
-        addTimerLayoutItem(R.id.sessionDetailTextOther, R.string.timer_layout_session_details);
-        addTimerLayoutItem(R.id.multi_phase_status_message, R.string.timer_layout_multi_phase_status);
-        addTimerLayoutItem(R.id.ble_status_message, R.string.timer_layout_bluetooth_status);
-        addTimerLayoutItem(R.id.serial_status_message, R.string.timer_layout_stack_timer_status);
-        addTimerLayoutItem(R.id.congratsText, R.string.timer_layout_personal_best);
+        addTimerLayoutItem(R.id.sessionRecentResultText, R.string.timer_layout_recent_results,
+                "recentResults", R.string.timer_layout_recent_results);
+        addTimerLayoutItem(R.id.detail_average_record_message,
+                R.string.timer_layout_average_record,
+                "averageRecord", R.string.timer_layout_average_record);
+        addTimerLayoutItem(R.id.sessionDetailTextAverage, R.string.timer_layout_session_averages,
+                "averages", R.string.timer_layout_session_averages);
+        addTimerLayoutItem(R.id.sessionDetailTextOther, R.string.timer_layout_session_details,
+                "sessionDetails", R.string.timer_layout_session_details);
+        addTimerLayoutItem(R.id.multi_phase_status_message,
+                R.string.timer_layout_multi_phase_status,
+                "multiPhaseStatus", R.string.timer_layout_multi_phase_status);
+        addTimerLayoutItem(R.id.ble_status_message, R.string.timer_layout_bluetooth_status,
+                "bluetoothStatus", R.string.timer_layout_bluetooth_status);
+        addTimerLayoutItem(R.id.serial_status_message, R.string.timer_layout_stack_timer_status,
+                "serialStatus", R.string.timer_layout_stack_timer_status);
+        addTimerLayoutItem(R.id.congratsText, R.string.timer_layout_personal_best,
+                "personalRecord", R.string.timer_layout_personal_best);
 
         timerLayoutVisibilityListener = () -> {
             if (!timerLayoutApplied) {
@@ -1505,9 +1612,15 @@ public class TimerFragment extends BaseFragment
     }
 
     private void addTimerLayoutItem(int viewId, int labelResId) {
+        addTimerLayoutItem(viewId, labelResId, null, 0);
+    }
+
+    private void addTimerLayoutItem(int viewId, int labelResId, @Nullable String appearanceComponent,
+                                    int appearanceTitleResId) {
         View itemView = rootLayout.findViewById(viewId);
         if (itemView != null) {
-            timerLayoutItems.add(new TimerLayoutItem(viewId, labelResId, itemView));
+            timerLayoutItems.add(new TimerLayoutItem(viewId, labelResId, itemView,
+                    appearanceComponent, appearanceTitleResId));
         }
     }
 
@@ -1519,15 +1632,30 @@ public class TimerFragment extends BaseFragment
 
         for (TimerLayoutItem item : timerLayoutItems) {
             String key = timerLayoutPreferenceKey(item);
+            int previousVisibilityMode = item.visibilityMode;
             item.translationX = Prefs.getPrefs().getFloat(key + ".x", 0f) * rootLayout.getWidth();
             item.translationY = Prefs.getPrefs().getFloat(key + ".y", 0f) * rootLayout.getHeight();
             item.scale = clampLayoutScale(Prefs.getPrefs().getFloat(key + ".scale", 1f));
             item.visibilityMode = Prefs.getPrefs().getInt(key + ".visibility", 0);
+            if (item.visibilityMode == 0 && previousVisibilityMode != 0) {
+                item.view.setVisibility(item.initialVisibility);
+            }
             item.translationX = clampLayoutTranslationX(item, item.translationX);
             item.translationY = clampLayoutTranslationY(item, item.translationY);
             applyTimerLayoutItem(item);
         }
         timerLayoutApplied = true;
+    }
+
+    private void reloadSavedTimerLayout() {
+        if (rootLayout == null || isEditingTimerLayout) {
+            return;
+        }
+        timerLayoutApplied = false;
+        if (rootLayout.getWidth() == 0 || rootLayout.getHeight() == 0) {
+            return;
+        }
+        applySavedTimerLayout();
     }
 
     private String timerLayoutPreferenceKey(TimerLayoutItem item) {
@@ -1683,7 +1811,8 @@ public class TimerFragment extends BaseFragment
                     public void onItemSelected(android.widget.AdapterView<?> parent, View view,
                                                int position, long id) {
                         if (position > 0) {
-                            applyTimerLayoutPreset(position);
+                            timerLayoutPresetSpinner.setSelection(0, false);
+                            confirmTimerLayoutPreset(position);
                         }
                     }
 
@@ -1741,6 +1870,13 @@ public class TimerFragment extends BaseFragment
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         panelContent.addView(sizeRow);
 
+        timerLayoutAppearanceButton = new TextView(context);
+        timerLayoutAppearanceButton.setText(R.string.timer_layout_text_appearance);
+        timerLayoutAppearanceButton.setPadding(padding, padding, padding, padding);
+        timerLayoutAppearanceButton.setBackgroundResource(android.R.drawable.list_selector_background);
+        timerLayoutAppearanceButton.setOnClickListener(view -> showSelectedAppearance());
+        panelContent.addView(timerLayoutAppearanceButton);
+
         TextView instructions = new TextView(context);
         instructions.setText(R.string.timer_layout_instructions);
         panelContent.addView(instructions);
@@ -1753,6 +1889,16 @@ public class TimerFragment extends BaseFragment
         panelParams.setMargins(margin, getActionBarSize() + margin, margin, margin);
         rootLayout.addView(timerLayoutEditorPanel, panelParams);
         timerLayoutEditorPanel.bringToFront();
+        UiFontUtils.applyToViewTree(timerLayoutEditorPanel);
+    }
+
+    private void confirmTimerLayoutPreset(int preset) {
+        ThemeUtils.roundAndShowDialog(requireContext(), new MaterialDialog.Builder(requireContext())
+                .content(R.string.timer_layout_preset_load_confirmation)
+                .positiveText(R.string.action_confirm)
+                .negativeText(R.string.action_cancel)
+                .onPositive((dialog, which) -> applyTimerLayoutPreset(preset))
+                .build());
     }
 
     private void selectTimerLayoutItem(int position) {
@@ -1783,7 +1929,193 @@ public class TimerFragment extends BaseFragment
         timerLayoutSizeSeekBar.setProgress(Math.max(0, Math.min(150, progress)));
         timerLayoutSizeText.setText(getString(R.string.timer_layout_size,
                 Math.round(item.scale * 100f)));
+        timerLayoutAppearanceButton.setEnabled(item.appearanceComponent != null);
+        timerLayoutAppearanceButton.setAlpha(item.appearanceComponent == null ? 0.5f : 1f);
         isUpdatingLayoutEditor = false;
+    }
+
+    private void showSelectedAppearance() {
+        if (selectedLayoutItem == null || selectedLayoutItem.appearanceComponent == null) {
+            return;
+        }
+        if ("averages".equals(selectedLayoutItem.appearanceComponent)) {
+            showAppearanceTargetPicker(
+                    new String[]{"ao3", "ao5", "ao12", "ao50", "ao100", "ao1000"},
+                    new int[]{R.string.timer_appearance_mo3, R.string.timer_appearance_ao5,
+                            R.string.timer_appearance_ao12, R.string.timer_appearance_ao50,
+                            R.string.timer_appearance_ao100, R.string.timer_appearance_ao1000});
+        } else if ("sessionDetails".equals(selectedLayoutItem.appearanceComponent)) {
+            showAppearanceTargetPicker(
+                    new String[]{"deviation", "mean", "best", "count"},
+                    new int[]{R.string.graph_stats_label_deviation,
+                            R.string.graph_stats_label_mean, R.string.graph_stats_label_best,
+                            R.string.graph_stats_label_solve_count});
+        } else {
+            showComponentAppearanceDialog(selectedLayoutItem.appearanceComponent,
+                    selectedLayoutItem.appearanceTitleResId);
+        }
+    }
+
+    private void showAppearanceTargetPicker(@NonNull String[] components,
+                                            @NonNull int[] titleResourceIds) {
+        if (components.length != titleResourceIds.length) {
+            Log.e(TAG, "Appearance component options and labels do not match");
+            return;
+        }
+        CharSequence[] labels = new CharSequence[titleResourceIds.length];
+        for (int i = 0; i < titleResourceIds.length; i++) {
+            labels[i] = getString(titleResourceIds[i]);
+        }
+        MaterialDialog dialog = ThemeUtils.roundDialog(requireContext(),
+                new MaterialDialog.Builder(requireContext())
+                        .title(R.string.timer_appearance_choose_element)
+                        .items(labels)
+                        .itemsCallback((materialDialog, itemView, which, text) -> {
+                            if (which >= 0 && which < components.length) {
+                                showComponentAppearanceDialog(components[which],
+                                        titleResourceIds[which]);
+                            }
+                        })
+                        .build());
+        dialog.show();
+    }
+
+    private void showComponentAppearanceDialog(@NonNull String component, int titleRes) {
+        Context context = requireContext();
+        String prefix = appearancePrefix(component);
+        String fallbackComponent = "inspection".equals(component)
+                || "multiPhaseStatus".equals(component)
+                || "bluetoothStatus".equals(component)
+                || "serialStatus".equals(component) ? "status" : component;
+        String fallbackPrefix = appearancePrefix(fallbackComponent);
+
+        List<String> fontValues = new ArrayList<>();
+        List<String> fontLabels = new ArrayList<>();
+        addAppearanceFontChoice(fontValues, fontLabels, "default",
+                R.string.timer_appearance_default_font);
+        addAppearanceFontChoice(fontValues, fontLabels, "lato", R.string.timer_font_lato);
+        addAppearanceFontChoice(fontValues, fontLabels, "quicksand",
+                R.string.timer_font_quicksand);
+        addAppearanceFontChoice(fontValues, fontLabels, "sans_serif",
+                R.string.timer_font_sans_serif);
+        addAppearanceFontChoice(fontValues, fontLabels, "monospace",
+                R.string.timer_font_monospace);
+        for (File font : getImportedFonts()) {
+            fontValues.add(TimerFontUtils.getCustomFontId(font.getName()));
+            fontLabels.add(Prefs.getPrefs().getString(
+                    TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
+        }
+
+        LinearLayout panel = new LinearLayout(context);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int horizontalPadding = ThemeUtils.dpToPix(context, 24);
+        panel.setPadding(horizontalPadding, 0, horizontalPadding, 0);
+
+        TextView fontLabel = new TextView(context);
+        fontLabel.setText(R.string.timer_appearance_font);
+        panel.addView(fontLabel);
+
+        Spinner fontSpinner = new Spinner(context);
+        ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(context,
+                android.R.layout.simple_spinner_item, fontLabels);
+        fontAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        fontSpinner.setAdapter(fontAdapter);
+        String selectedFont = getAppearanceString(prefix, fallbackPrefix, "font", "default");
+        fontSpinner.setSelection(Math.max(0, fontValues.indexOf(selectedFont)));
+        panel.addView(fontSpinner);
+
+        TextView sizeLabel = new TextView(context);
+        int size = getAppearanceInt(prefix, fallbackPrefix, "size", 100);
+        sizeLabel.setText(getString(R.string.timer_appearance_size, size));
+        panel.addView(sizeLabel);
+
+        SeekBar sizeSeekBar = new SeekBar(context);
+        sizeSeekBar.setMax(150);
+        sizeSeekBar.setProgress(Math.max(0, Math.min(150, size - 50)));
+        sizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                sizeLabel.setText(getString(R.string.timer_appearance_size, progress + 50));
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
+            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
+        });
+        panel.addView(sizeSeekBar);
+
+        CheckBox boldCheckBox = new CheckBox(context);
+        boldCheckBox.setText(R.string.timer_appearance_bold);
+        boolean defaultBold = "timer".equals(component) || "laps".equals(component)
+                || "inspection".equals(component) || component.endsWith("Status");
+        boldCheckBox.setChecked(getAppearanceBoolean(
+                prefix, fallbackPrefix, "bold", defaultBold));
+        panel.addView(boldCheckBox);
+
+        CheckBox italicCheckBox = new CheckBox(context);
+        italicCheckBox.setText(R.string.timer_appearance_italic);
+        italicCheckBox.setChecked(getAppearanceBoolean(
+                prefix, fallbackPrefix, "italic", false));
+        panel.addView(italicCheckBox);
+
+        TextView colorLabel = new TextView(context);
+        colorLabel.setText(R.string.timer_appearance_color);
+        panel.addView(colorLabel);
+        String[] colorValues = {"theme", "accent", "white", "black"};
+        String[] colorLabels = {
+                getString(R.string.timer_appearance_color_theme),
+                getString(R.string.timer_appearance_color_accent),
+                getString(R.string.timer_appearance_color_white),
+                getString(R.string.timer_appearance_color_black)
+        };
+        Spinner colorSpinner = new Spinner(context);
+        ArrayAdapter<String> colorAdapter = new ArrayAdapter<>(context,
+                android.R.layout.simple_spinner_item, colorLabels);
+        colorAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        colorSpinner.setAdapter(colorAdapter);
+        String color = getAppearanceString(prefix, fallbackPrefix, "color", "theme");
+        colorSpinner.setSelection(Math.max(0, Arrays.asList(colorValues).indexOf(color)));
+        panel.addView(colorSpinner);
+
+        MaterialDialog dialog = ThemeUtils.roundDialog(context,
+                new MaterialDialog.Builder(context)
+                        .title(getString(R.string.timer_appearance_dialog_title, getString(titleRes)))
+                        .customView(panel, true)
+                        .positiveText(R.string.action_done)
+                        .negativeText(R.string.action_cancel)
+                        .onPositive((materialDialog, which) -> {
+                            int fontIndex = fontSpinner.getSelectedItemPosition();
+                            Prefs.getPrefs().edit()
+                                    .putString(prefix + "font", fontValues.get(fontIndex))
+                                    .putInt(prefix + "size", sizeSeekBar.getProgress() + 50)
+                                    .putBoolean(prefix + "bold", boldCheckBox.isChecked())
+                                    .putBoolean(prefix + "italic", italicCheckBox.isChecked())
+                                    .putString(prefix + "color",
+                                            colorValues[colorSpinner.getSelectedItemPosition()])
+                                    .apply();
+                            applyTimerFont();
+                        })
+                        .build());
+        dialog.show();
+    }
+
+    private void addAppearanceFontChoice(@NonNull List<String> values,
+                                         @NonNull List<String> labels, @NonNull String value,
+                                         int labelRes) {
+        values.add(value);
+        labels.add(getString(labelRes));
+    }
+
+    @NonNull
+    private File[] getImportedFonts() {
+        File fontDirectory = TimerFontUtils.getCustomFontDirectory(requireContext());
+        File[] fonts = fontDirectory.listFiles((directory, name) ->
+                name.toLowerCase(Locale.ROOT).endsWith(".ttf")
+                        || name.toLowerCase(Locale.ROOT).endsWith(".otf"));
+        if (fonts == null) {
+            return new File[0];
+        }
+        Arrays.sort(fonts, (left, right) -> left.getName().compareToIgnoreCase(right.getName()));
+        return fonts;
     }
 
     private boolean onTimerLayoutItemTouch(TimerLayoutItem item, MotionEvent event) {
@@ -1933,6 +2265,8 @@ public class TimerFragment extends BaseFragment
         final int viewId;
         final int labelResId;
         final View view;
+        @Nullable final String appearanceComponent;
+        final int appearanceTitleResId;
         float translationX;
         float translationY;
         float scale = 1f;
@@ -1940,10 +2274,13 @@ public class TimerFragment extends BaseFragment
         final int initialVisibility;
         Drawable foregroundBeforeEdit;
 
-        TimerLayoutItem(int viewId, int labelResId, View view) {
+        TimerLayoutItem(int viewId, int labelResId, View view,
+                        @Nullable String appearanceComponent, int appearanceTitleResId) {
             this.viewId = viewId;
             this.labelResId = labelResId;
             this.view = view;
+            this.appearanceComponent = appearanceComponent;
+            this.appearanceTitleResId = appearanceTitleResId;
             this.initialVisibility = view.getVisibility();
         }
     }
@@ -2284,6 +2621,7 @@ public class TimerFragment extends BaseFragment
             stringDetailOther.append(detailTextNamesArray[9]).append(": ").append(sessionCount);
 
             detailTextOther.setText(stringDetailOther.toString());
+            applySessionDetailAppearances();
 
             // To prevent the record message being animated more than once in case the user sets
             // two or more average records at the same time.

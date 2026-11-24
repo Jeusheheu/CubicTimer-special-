@@ -55,17 +55,23 @@ import com.hatopigeon.cubictimer.utils.LocaleUtils;
 import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
 import com.hatopigeon.cubictimer.utils.TimerFontUtils;
+import com.hatopigeon.cubictimer.utils.TimerLayoutPresetUtils;
 import com.hatopigeon.cubictimer.utils.UiFontUtils;
 import com.takisoft.preferencex.PreferenceFragmentCompat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -124,10 +130,14 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void attachBaseContext(Context newBase) {
-        super.attachBaseContext(LocaleUtils.updateLocale(newBase));
+        Context localizedContext = LocaleUtils.updateLocale(newBase);
+        UiFontUtils.preloadSelectedTypeface(localizedContext);
+        super.attachBaseContext(localizedContext);
     }
 
     public static class SettingsFragment extends PreferenceFragmentCompat {
+        private static final String STATE_PENDING_LAYOUT_PRESET_EXPORT =
+                "pendingLayoutPresetExport";
 
         // Variables used to handle back button behavior
         // Stores last PreferenceScreen opened
@@ -145,6 +155,9 @@ public class SettingsActivity extends AppCompatActivity {
 
         private ActivityResultLauncher<Intent> openDocLauncher;
         private ActivityResultLauncher<Intent> importFontLauncher;
+        private ActivityResultLauncher<Intent> importLayoutPresetLauncher;
+        private ActivityResultLauncher<Intent> exportLayoutPresetLauncher;
+        private String pendingLayoutPresetExport;
         private boolean isBgImageSelectPortrait = true;
 
         private final androidx.preference.Preference.OnPreferenceClickListener clickListener
@@ -169,13 +182,10 @@ public class SettingsActivity extends AppCompatActivity {
                         R.string.pk_bg_image_landscape,
                         R.string.pk_bg_image_opacity,
                         R.string.pk_timer_font_import,
-                        R.string.pk_appearance_timer,
-                        R.string.pk_appearance_scramble,
-                        R.string.pk_appearance_ao5,
-                        R.string.pk_appearance_ao12,
-                        R.string.pk_appearance_ao100,
-                        R.string.pk_appearance_status,
-                        R.string.pk_appearance_laps)) {
+                        R.string.pk_timer_layout_preset_load,
+                        R.string.pk_timer_layout_preset_save,
+                        R.string.pk_timer_layout_preset_export,
+                        R.string.pk_timer_layout_preset_import)) {
 
                     case R.string.pk_inspection_time:
                         createNumberDialog(R.string.inspection_time, R.string.pk_inspection_time);
@@ -318,26 +328,17 @@ public class SettingsActivity extends AppCompatActivity {
                     case R.string.pk_timer_font_import:
                         launchFontPicker();
                         break;
-                    case R.string.pk_appearance_timer:
-                        showComponentAppearanceDialog("timer", R.string.timer_appearance_timer);
+                    case R.string.pk_timer_layout_preset_load:
+                        showSavedLayoutPresetChooser(false);
                         break;
-                    case R.string.pk_appearance_scramble:
-                        showComponentAppearanceDialog("scramble", R.string.timer_appearance_scramble);
+                    case R.string.pk_timer_layout_preset_save:
+                        promptSaveLayoutPreset();
                         break;
-                    case R.string.pk_appearance_ao5:
-                        showComponentAppearanceDialog("ao5", R.string.timer_appearance_ao5);
+                    case R.string.pk_timer_layout_preset_export:
+                        showSavedLayoutPresetChooser(true);
                         break;
-                    case R.string.pk_appearance_ao12:
-                        showComponentAppearanceDialog("ao12", R.string.timer_appearance_ao12);
-                        break;
-                    case R.string.pk_appearance_ao100:
-                        showComponentAppearanceDialog("ao100", R.string.timer_appearance_ao100);
-                        break;
-                    case R.string.pk_appearance_status:
-                        showComponentAppearanceDialog("status", R.string.timer_appearance_status);
-                        break;
-                    case R.string.pk_appearance_laps:
-                        showComponentAppearanceDialog("laps", R.string.timer_appearance_laps);
+                    case R.string.pk_timer_layout_preset_import:
+                        launchLayoutPresetPicker();
                         break;
                 }
                 return false;
@@ -351,6 +352,10 @@ public class SettingsActivity extends AppCompatActivity {
             super.onCreate(savedInstanceState);
 
             mContext = getContext();
+            if (savedInstanceState != null) {
+                pendingLayoutPresetExport =
+                        savedInstanceState.getString(STATE_PENDING_LAYOUT_PRESET_EXPORT);
+            }
 
             averageText = getString(R.string.graph_legend_avg_prefix);
 
@@ -374,6 +379,35 @@ public class SettingsActivity extends AppCompatActivity {
                         }
                     }
             );
+            importLayoutPresetLauncher = registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null
+                                && result.getData().getData() != null) {
+                            importLayoutPreset(result.getData().getData());
+                        }
+                    }
+            );
+            exportLayoutPresetLauncher = registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        Uri uri = result.getResultCode() == Activity.RESULT_OK
+                                && result.getData() != null ? result.getData().getData() : null;
+                        if (uri != null && pendingLayoutPresetExport != null) {
+                            writeLayoutPreset(uri, pendingLayoutPresetExport);
+                        }
+                        pendingLayoutPresetExport = null;
+                    }
+            );
+        }
+
+        @Override
+        public void onSaveInstanceState(@NonNull Bundle outState) {
+            super.onSaveInstanceState(outState);
+            if (pendingLayoutPresetExport != null) {
+                outState.putString(STATE_PENDING_LAYOUT_PRESET_EXPORT,
+                        pendingLayoutPresetExport);
+            }
         }
 
         @Override
@@ -396,13 +430,10 @@ public class SettingsActivity extends AppCompatActivity {
                     R.string.pk_bg_image_landscape,
                     R.string.pk_bg_image_opacity,
                     R.string.pk_timer_font_import,
-                    R.string.pk_appearance_timer,
-                    R.string.pk_appearance_scramble,
-                    R.string.pk_appearance_ao5,
-                    R.string.pk_appearance_ao12,
-                    R.string.pk_appearance_ao100,
-                    R.string.pk_appearance_status,
-                    R.string.pk_appearance_laps};
+                    R.string.pk_timer_layout_preset_load,
+                    R.string.pk_timer_layout_preset_save,
+                    R.string.pk_timer_layout_preset_export,
+                    R.string.pk_timer_layout_preset_import};
 
             for (int prefId : listenerPrefIds) {
                 Preference p = findPreference(getString(prefId));
@@ -865,121 +896,238 @@ public class SettingsActivity extends AppCompatActivity {
             return lastSegment == null ? "" : lastSegment;
         }
 
-        private void showComponentAppearanceDialog(@NonNull String component, int titleRes) {
-            Context context = requireContext();
-            String prefsPrefix = "timerAppearance_" + component + "_";
-            List<String> fontValues = new ArrayList<>();
-            List<String> fontLabels = new ArrayList<>();
-            addFontChoice(fontValues, fontLabels, "default", R.string.timer_appearance_default_font);
-            addFontChoice(fontValues, fontLabels, "lato", R.string.timer_font_lato);
-            addFontChoice(fontValues, fontLabels, "quicksand", R.string.timer_font_quicksand);
-            addFontChoice(fontValues, fontLabels, "sans_serif", R.string.timer_font_sans_serif);
-            addFontChoice(fontValues, fontLabels, "monospace", R.string.timer_font_monospace);
-
-            for (File font : getImportedFonts(context)) {
-                fontValues.add(TimerFontUtils.getCustomFontId(font.getName()));
-                fontLabels.add(Prefs.getPrefs().getString(
-                        TimerFontUtils.getDisplayNamePreferenceKey(font.getName()), font.getName()));
-            }
-
-            LinearLayout panel = new LinearLayout(context);
-            panel.setOrientation(LinearLayout.VERTICAL);
-            int horizontalPadding = ThemeUtils.dpToPix(context, 24);
-            panel.setPadding(horizontalPadding, 0, horizontalPadding, 0);
-
-            TextView fontLabel = new TextView(context);
-            fontLabel.setText(R.string.timer_appearance_font);
-            panel.addView(fontLabel);
-
-            Spinner fontSpinner = new Spinner(context);
-            ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(context,
-                    android.R.layout.simple_spinner_item, fontLabels);
-            fontAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            fontSpinner.setAdapter(fontAdapter);
-            String selectedFont = Prefs.getPrefs().getString(prefsPrefix + "font", "default");
-            int selectedFontIndex = fontValues.indexOf(selectedFont);
-            fontSpinner.setSelection(Math.max(0, selectedFontIndex));
-            panel.addView(fontSpinner);
-
-            TextView sizeLabel = new TextView(context);
-            int size = Prefs.getPrefs().getInt(prefsPrefix + "size", 100);
-            sizeLabel.setText(getString(R.string.timer_appearance_size, size));
-            panel.addView(sizeLabel);
-
-            SeekBar sizeSeekBar = new SeekBar(context);
-            sizeSeekBar.setMax(150);
-            sizeSeekBar.setProgress(Math.max(0, Math.min(150, size - 50)));
-            sizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                    sizeLabel.setText(getString(R.string.timer_appearance_size, progress + 50));
-                }
-
-                @Override
-                public void onStartTrackingTouch(SeekBar seekBar) {
-                }
-
-                @Override
-                public void onStopTrackingTouch(SeekBar seekBar) {
-                }
-            });
-            panel.addView(sizeSeekBar);
-
-            CheckBox boldCheckBox = new CheckBox(context);
-            boldCheckBox.setText(R.string.timer_appearance_bold);
-            boolean defaultBold = "timer".equals(component) || "laps".equals(component)
-                    || "status".equals(component);
-            boldCheckBox.setChecked(Prefs.getPrefs().getBoolean(prefsPrefix + "bold", defaultBold));
-            panel.addView(boldCheckBox);
-
-            CheckBox italicCheckBox = new CheckBox(context);
-            italicCheckBox.setText(R.string.timer_appearance_italic);
-            italicCheckBox.setChecked(Prefs.getPrefs().getBoolean(prefsPrefix + "italic", false));
-            panel.addView(italicCheckBox);
-
-            TextView colorLabel = new TextView(context);
-            colorLabel.setText(R.string.timer_appearance_color);
-            panel.addView(colorLabel);
-            String[] colorValues = {"theme", "accent", "white", "black"};
-            String[] colorLabels = {
-                    getString(R.string.timer_appearance_color_theme),
-                    getString(R.string.timer_appearance_color_accent),
-                    getString(R.string.timer_appearance_color_white),
-                    getString(R.string.timer_appearance_color_black)
-            };
-            Spinner colorSpinner = new Spinner(context);
-            ArrayAdapter<String> colorAdapter = new ArrayAdapter<>(context,
-                    android.R.layout.simple_spinner_item, colorLabels);
-            colorAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            colorSpinner.setAdapter(colorAdapter);
-            String color = Prefs.getPrefs().getString(prefsPrefix + "color", "theme");
-            int selectedColorIndex = java.util.Arrays.asList(colorValues).indexOf(color);
-            colorSpinner.setSelection(Math.max(0, selectedColorIndex));
-            panel.addView(colorSpinner);
-
-            MaterialDialog dialog = ThemeUtils.roundDialog(context, new MaterialDialog.Builder(context)
-                    .title(getString(R.string.timer_appearance_dialog_title, getString(titleRes)))
-                    .customView(panel, true)
+        private void promptSaveLayoutPreset() {
+            ThemeUtils.roundAndShowDialog(requireContext(), new MaterialDialog.Builder(requireContext())
+                    .title(R.string.timer_layout_preset_save)
+                    .inputRange(1, 50)
+                    .input(R.string.timer_layout_preset_name_hint, 0, false,
+                            (dialog, input) -> {
+                                String name = input == null ? "" : input.toString().trim();
+                                if (!TimerLayoutPresetUtils.isValidName(name)) {
+                                    Toast.makeText(requireContext(),
+                                            R.string.timer_layout_preset_name_invalid,
+                                            Toast.LENGTH_SHORT).show();
+                                    return;
+                                }
+                                try {
+                                    String json = TimerLayoutPresetUtils.createCurrentPresetJson(
+                                            Prefs.getPrefs(), name);
+                                    if (TimerLayoutPresetUtils.hasSavedPreset(
+                                            Prefs.getPrefs(), name)) {
+                                        confirmReplaceLayoutPreset(name,
+                                                () -> saveNamedLayoutPreset(json,
+                                                        R.string.timer_layout_preset_save_success));
+                                    } else {
+                                        saveNamedLayoutPreset(json,
+                                                R.string.timer_layout_preset_save_success);
+                                    }
+                                } catch (JSONException | IllegalArgumentException e) {
+                                    Log.e(TAG, "Could not capture current timer layout preset", e);
+                                    Toast.makeText(requireContext(),
+                                            R.string.timer_layout_preset_io_failed,
+                                            Toast.LENGTH_LONG).show();
+                                }
+                            })
                     .positiveText(R.string.action_done)
                     .negativeText(R.string.action_cancel)
-                    .onPositive((materialDialog, which) -> {
-                        int fontIndex = fontSpinner.getSelectedItemPosition();
-                        Prefs.getPrefs().edit()
-                                .putString(prefsPrefix + "font", fontValues.get(fontIndex))
-                                .putInt(prefsPrefix + "size", sizeSeekBar.getProgress() + 50)
-                                .putBoolean(prefsPrefix + "bold", boldCheckBox.isChecked())
-                                .putBoolean(prefsPrefix + "italic", italicCheckBox.isChecked())
-                                .putString(prefsPrefix + "color",
-                                        colorValues[colorSpinner.getSelectedItemPosition()])
-                                .apply();
-                    })
                     .build());
-            dialog.show();
         }
 
-        private void addFontChoice(List<String> values, List<String> labels, String value, int labelRes) {
-            values.add(value);
-            labels.add(getString(labelRes));
+        private void saveNamedLayoutPreset(@NonNull String json, int successMessageRes) {
+            try {
+                TimerLayoutPresetUtils.saveNamedPreset(Prefs.getPrefs(), json);
+                Toast.makeText(requireContext(), successMessageRes, Toast.LENGTH_SHORT).show();
+            } catch (JSONException | IllegalArgumentException e) {
+                Log.e(TAG, "Could not save timer layout preset", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+
+        private void confirmReplaceLayoutPreset(@NonNull String name, @NonNull Runnable onConfirm) {
+            ThemeUtils.roundAndShowDialog(requireContext(), new MaterialDialog.Builder(requireContext())
+                    .title(R.string.timer_layout_preset_overwrite_confirmation)
+                    .content(name)
+                    .positiveText(R.string.action_confirm)
+                    .negativeText(R.string.action_cancel)
+                    .onPositive((dialog, which) -> onConfirm.run())
+                    .build());
+        }
+
+        private void showSavedLayoutPresetChooser(boolean export) {
+            final List<String> presetNames;
+            try {
+                presetNames = TimerLayoutPresetUtils.getSavedPresetNames(Prefs.getPrefs());
+            } catch (JSONException e) {
+                Log.e(TAG, "Could not read saved timer layout presets", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (presetNames.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_no_saved,
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            int title = export ? R.string.timer_layout_preset_export
+                    : R.string.timer_layout_preset_load;
+            ThemeUtils.roundAndShowDialog(requireContext(), new MaterialDialog.Builder(requireContext())
+                    .title(title)
+                    .items(presetNames.toArray(new String[0]))
+                    .itemsCallback((dialog, itemView, which, text) -> {
+                        if (which < 0 || which >= presetNames.size()) {
+                            return;
+                        }
+                        String name = presetNames.get(which);
+                        if (export) {
+                            exportSavedLayoutPreset(name);
+                        } else {
+                            confirmLoadSavedLayoutPreset(name);
+                        }
+                    })
+                    .build());
+        }
+
+        private void confirmLoadSavedLayoutPreset(@NonNull String name) {
+            final String json;
+            try {
+                json = TimerLayoutPresetUtils.getSavedPresetJson(Prefs.getPrefs(), name);
+            } catch (JSONException e) {
+                Log.e(TAG, "Could not read timer layout preset " + name, e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            ThemeUtils.roundAndShowDialog(requireContext(), new MaterialDialog.Builder(requireContext())
+                    .content(R.string.timer_layout_preset_load_confirmation)
+                    .positiveText(R.string.action_confirm)
+                    .negativeText(R.string.action_cancel)
+                    .onPositive((dialog, which) -> {
+                        try {
+                            TimerLayoutPresetUtils.applyPreset(Prefs.getPrefs(), json);
+                            Toast.makeText(requireContext(),
+                                    R.string.timer_layout_preset_load_success,
+                                    Toast.LENGTH_SHORT).show();
+                            requireActivity().finish();
+                        } catch (JSONException | IllegalArgumentException e) {
+                            Log.e(TAG, "Could not apply timer layout preset " + name, e);
+                            Toast.makeText(requireContext(), R.string.timer_layout_preset_invalid,
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    })
+                    .build());
+        }
+
+        private void launchLayoutPresetPicker() {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES,
+                    new String[]{"application/json", "text/json", "text/plain",
+                            "application/octet-stream"});
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            try {
+                importLayoutPresetLauncher.launch(intent);
+            } catch (ActivityNotFoundException e) {
+                Log.e(TAG, "No document picker is available for importing timer layouts", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+
+        private void importLayoutPreset(@NonNull Uri uri) {
+            try {
+                String json = readLayoutPreset(uri);
+                JSONObject preset = TimerLayoutPresetUtils.parsePreset(json);
+                String name = preset.getString("name");
+                Runnable save = () -> saveNamedLayoutPreset(preset.toString(),
+                        R.string.timer_layout_preset_import_success);
+                if (TimerLayoutPresetUtils.hasSavedPreset(Prefs.getPrefs(), name)) {
+                    confirmReplaceLayoutPreset(name, save);
+                } else {
+                    save.run();
+                }
+            } catch (JSONException | IllegalArgumentException e) {
+                Log.e(TAG, "Selected file is not a valid timer layout preset", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_invalid,
+                        Toast.LENGTH_LONG).show();
+            } catch (IOException | SecurityException e) {
+                Log.e(TAG, "Could not read imported timer layout preset", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+
+        @NonNull
+        private String readLayoutPreset(@NonNull Uri uri) throws IOException {
+            final int maximumBytes = 1024 * 1024;
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            try (InputStream input = requireContext().getContentResolver().openInputStream(uri)) {
+                if (input == null) {
+                    throw new IOException("No data available for selected preset");
+                }
+                byte[] buffer = new byte[8192];
+                int count;
+                int totalBytes = 0;
+                while ((count = input.read(buffer)) != -1) {
+                    totalBytes += count;
+                    if (totalBytes > maximumBytes) {
+                        throw new IOException("Timer layout preset file is too large");
+                    }
+                    output.write(buffer, 0, count);
+                }
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        }
+
+        private void exportSavedLayoutPreset(@NonNull String name) {
+            final String presetJson;
+            try {
+                presetJson = TimerLayoutPresetUtils.getSavedPresetJson(Prefs.getPrefs(), name);
+            } catch (JSONException e) {
+                Log.e(TAG, "Could not read timer layout preset for export: " + name, e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            String safeName = name.replaceAll("[^A-Za-z0-9._-]+", "_");
+            if (safeName.isEmpty()) {
+                safeName = "timer_layout";
+            }
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, safeName + ".json");
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            pendingLayoutPresetExport = presetJson;
+            try {
+                exportLayoutPresetLauncher.launch(intent);
+            } catch (ActivityNotFoundException e) {
+                pendingLayoutPresetExport = null;
+                Log.e(TAG, "No document picker is available for exporting timer layouts", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+
+        private void writeLayoutPreset(@NonNull Uri uri, @NonNull String json) {
+            try (OutputStream output = requireContext().getContentResolver()
+                    .openOutputStream(uri, "w")) {
+                if (output == null) {
+                    throw new IOException("No output stream available for selected document");
+                }
+                output.write(json.getBytes(StandardCharsets.UTF_8));
+                output.flush();
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_export_success,
+                        Toast.LENGTH_SHORT).show();
+            } catch (IOException | SecurityException e) {
+                Log.e(TAG, "Could not export timer layout preset", e);
+                Toast.makeText(requireContext(), R.string.timer_layout_preset_io_failed,
+                        Toast.LENGTH_LONG).show();
+            }
         }
 
         private void updateTimerFontPreferenceEntries() {

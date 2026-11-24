@@ -60,6 +60,8 @@ public class CubicTimer extends MultiDexApplication {
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override
             public void onActivityCreated(@NonNull Activity activity, Bundle savedInstanceState) {
+                // Style the completed view tree before the activity can draw its first frame.
+                UiFontUtils.applyToViewTree(activity.getWindow().getDecorView());
                 if (activity instanceof FragmentActivity) {
                     ((FragmentActivity) activity).getSupportFragmentManager()
                             .registerFragmentLifecycleCallbacks(

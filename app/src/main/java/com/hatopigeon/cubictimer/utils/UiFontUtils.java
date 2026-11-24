@@ -39,6 +39,10 @@ public final class UiFontUtils {
         return getTypeface(context, fontId);
     }
 
+    public static void preloadSelectedTypeface(@NonNull Context context) {
+        getSelectedTypeface(context);
+    }
+
     @Nullable
     public static Typeface getTypeface(@NonNull Context context, @Nullable String fontId) {
         if (fontId == null || !fontId.startsWith(TimerFontUtils.CUSTOM_FONT_ID_PREFIX)) {
@@ -176,6 +180,10 @@ public final class UiFontUtils {
                 || id == R.id.scramble_text
                 || id == R.id.lapTimeText
                 || id == R.id.sessionDetailTextAverage
+                || id == R.id.sessionDetailTextOther
+                || id == R.id.sessionRecentResultText
+                || id == R.id.detail_average_record_message
+                || id == R.id.congratsText
                 || id == R.id.inspection_text
                 || id == R.id.multi_phase_status_message
                 || id == R.id.ble_status_message

@@ -20,6 +20,7 @@ import com.hatopigeon.cubictimer.utils.LocaleUtils;
 import com.hatopigeon.cubictimer.utils.Prefs;
 import com.hatopigeon.cubictimer.utils.StoreUtils;
 import com.hatopigeon.cubictimer.utils.ThemeUtils;
+import com.hatopigeon.cubictimer.utils.UiFontUtils;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -28,8 +29,6 @@ import de.psdev.licensesdialog.LicensesDialog;
 public class AboutActivity extends AppCompatActivity {
 
     private final static String APP_TITLE = "Cubic Timer";
-    private final static String APP_PNAME = "com.hatopigeon.cubictimer";
-
     @BindView(R.id.rateButton)        AppCompatTextView rateButton;
     @BindView(R.id.feedbackButton)    AppCompatTextView feedbackButton;
     @BindView(R.id.licenseButton)     AppCompatTextView licenseButton;
@@ -58,7 +57,8 @@ public class AboutActivity extends AppCompatActivity {
                     break;
                 case R.id.rateButton:
                     try {
-                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + APP_PNAME)));
+                        startActivity(new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("market://details?id=" + getPackageName())));
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -98,7 +98,9 @@ public class AboutActivity extends AppCompatActivity {
 
     @Override
     protected void attachBaseContext(Context newBase) {
-        super.attachBaseContext(LocaleUtils.updateLocale(newBase));
+        Context localizedContext = LocaleUtils.updateLocale(newBase);
+        UiFontUtils.preloadSelectedTypeface(localizedContext);
+        super.attachBaseContext(localizedContext);
     }
 
     @Override
